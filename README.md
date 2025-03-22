@@ -23,5 +23,3 @@ O bot utiliza o Selenium WebDriver para abrir o Gmail no Google Chrome, navegar 
 🔹Selenium WebDriver
 
 🔹Google Chrome
-
-💡 Observação: Este projeto não utiliza a API do Google, funcionando exclusivamente por automação de navegador.
