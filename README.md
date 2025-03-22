@@ -1,4 +1,6 @@
 📨 Gmail Cleaner Bot
+
+
 Um robô automatizado em C# que utiliza Selenium e o Google Chrome para acessar e limpar e-mails de um marcador específico no Gmail, sem a necessidade da API do Google.
 
 🔹 Recursos
