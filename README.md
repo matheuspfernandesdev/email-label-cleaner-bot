@@ -23,3 +23,6 @@ O bot utiliza o Selenium WebDriver para abrir o Gmail no Google Chrome, navegar 
 🔹Selenium WebDriver
 
 🔹Google Chrome
+
+
+📨 O código está organizado em métodos apenas para legibilidade, mas tá tudo no Program.cs. Não me julgue, pois o o GoHorse tem seu lugar!
