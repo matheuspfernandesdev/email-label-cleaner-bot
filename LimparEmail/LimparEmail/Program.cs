@@ -1,6 +1,8 @@
 ﻿using LimparEmail.Domain;
+using LimparEmail.Domain.Entities;
 using LimparEmail.Domain.Exceptions;
 using LimparEmail.Utility;
+using Microsoft.Extensions.Configuration;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
 using OpenQA.Selenium.Support.UI;
@@ -9,18 +11,17 @@ using System.Net;
 using System.Net.Mail;
 using System.Text;
 
+
 #region [ROBOT EXECUTION]
 
-//PRD - Sim, estou com preguiça! É só um projeto de final de semana (que me tomou 5 dias :D), então me deixa! 
-//const string urlBase = "https://mail.google.com/mail/u/5/";
-
-//DEV
-const string urlBase = "https://mail.google.com/mail/u/0/";
+string urlBase = string.Empty;
+string desiredLabel = string.Empty;
+int NumberOfEmailsAccessed = 0;
+AppSettings appSettings = new();
 
 const string urlLabel = "#label/";
 int ExecucaoLenta = 1;
 CurrentIterationPages currentIterationPages = new();
-List<string> unsubscribeList = [];
 List<string> obtainedEmails = [];
 List<DateTime> foundDates = [];
 
@@ -29,20 +30,17 @@ const string VistoPor = "Ana Gabriela";
 const string OrigemClone = "Brius";
 string csvContent = string.Empty;
 
-string desiredLabel = "Recibos";
 DateTime requestedDate = new();
-
 ChromeDriver? driver = null;
+IConfiguration config;
 
 try
 {
-    desiredLabel = GetDesiredLabel();
+    SettingsAppConfig();
     requestedDate = GetDesiredDate();
-
     driver = InitializeChromeDriver();
 
     CloseExtraTabs();
-
     GoToPage(urlBase + urlLabel + desiredLabel + "/p1");
 
     do
@@ -63,7 +61,8 @@ try
 }
 catch (Exception ex)
 {
-    EnviarEmailErro(ex);
+    if (appSettings.SendEmail)
+        EnviarEmailErro(ex);
 }
 finally
 {
@@ -74,6 +73,25 @@ finally
 
 #region [CONSOLE METHODS]
 
+void SettingsAppConfig()
+{
+    //NOTA: Isso só funciona com o Production se utilizar corretamente no modo debug, então fica aqui como configurar corretamente:
+    //Clique com o botão direito no projeto > Properties > Menu Debug > General > Open Debug Launch Profile UI
+    //Em Enviroment Variables, preencha um Name como DOTNET_ENVIRONMENT e na frente o Value como Development
+    string environment = Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") ?? "Production";
+
+    config = new ConfigurationBuilder()
+        .SetBasePath(Directory.GetCurrentDirectory())
+        .AddJsonFile($"appSettings.{environment}.json", optional: false, reloadOnChange: true)
+        .Build();
+
+    appSettings = config.GetSection("AppSettings").Get<AppSettings>()
+                        ?? throw new InvalidOperationException("Erro ao carregar appSettings");
+
+    urlBase = appSettings.UrlBase;
+    desiredLabel = appSettings.Label;
+}
+
 DateTime GetDesiredDate()
 {
     string? inputDate;
@@ -83,7 +101,7 @@ DateTime GetDesiredDate()
     do
     {
         Console.WriteLine($"OBS: O gmail precisa estar logado no perfil do Chrome antes de rodar o robô\n");
-        Console.Write($"MARCADOR ESCOLHIDO: {desiredLabel}\n\n");
+        Console.Write($"MARCADOR QUE O ROBÔ IRÁ RODAR: {desiredLabel}\n\n");
 
         Console.WriteLine("Digite uma data no formato dd/MM/yyyy: ");
         inputDate = Console.ReadLine();
@@ -138,6 +156,11 @@ string GetDesiredLabel()
     return marcadorSelecionado;
 }
 
+void DelaySegundos(int segundos)
+{
+    Thread.Sleep(1000 * segundos * ExecucaoLenta);
+}
+
 #endregion
 
 #region [SELENIUM METHODS]
@@ -152,9 +175,13 @@ int ReturnLineNumberOfDesiredDate()
 
     for (int i = startLine; i <= emailElements.Count; i++)
     {
-        string spanDate = emailElements[i - 1].Text;
+        //NOTE: Todas essas duas maneiras abaixo, davam certo até algum ponto, e entre o 2º e 15º email parava de pegar a data. 
+        //Com o método ByJS não encontrei mais o erro, então manti ele
 
-        //spanDate = driver.FindElement(By.XPath($"(//td[contains(@class, 'xW') and contains(@class, 'xY')]/span/span)[{i}]")).Text;
+        //string spanDate2 = emailElements[i - 1].Text;
+        //string spanDate3 = driver.FindElement(By.XPath($"(//td[contains(@class, 'xW') and contains(@class, 'xY')]/span/span)[{i}]")).Text;
+
+        string spanDate = GetSpanDateByIndexWithJS(i);
 
         DateTime? parseEmailDateToString = ParseEmailStringToDate(spanDate);
         DateTime currentEmailDate;
@@ -183,8 +210,9 @@ int ReturnLineNumberOfDesiredDate()
 
 void GetInfoFromEmail(int lineNumberToClick)
 {
-    driver.FindElement(By.XPath($"(//*[@class='Cp']//tbody/tr)[{lineNumberToClick}]")).Click();
+    driver.FindElement(By.XPath($"(//*[@class='yX xY '])[{lineNumberToClick}]")).Click();
     WaitForPageToLoad(5);
+    NumberOfEmailsAccessed++;
 
     PopulateCsv();
 
@@ -230,27 +258,29 @@ ChromeDriver InitializeChromeDriver()
     var driverPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Drivers");
     options.BinaryLocation = @"C:\Program Files\Google\Chrome\Application\chrome.exe";
 
-    options.AddArgument($"user-data-dir={Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)}\\AppData\\Local\\Google\\Chrome\\User Data");
+    string userDataDir = $"user-data-dir={Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)}\\AppData\\Local\\Google\\Chrome\\User Data";
+    Console.WriteLine(userDataDir);
+    Thread.Sleep(3000);
 
-    //DEV
-    options.AddArgument("profile-directory=Default");
-    //PRD
-    //options.AddArgument("profile-directory=Profile 7");
+    options.AddArgument(userDataDir);
 
-    //options.AddArgument("--headless=new"); 
-    options.AddArgument("--disable-gpu");
-    options.AddArgument("--disable-extensions");
-    options.AddArgument("--disable-infobars");
-    options.AddArgument("--start-maximized");
-    options.AddArgument("--disable-popup-blocking");
-    options.AddArgument("--ignore-certificate-errors");
-    options.AddArgument("--blink-settings=imagesEnabled=false");
-    options.AddArgument("--disable-blink-features=AutomationControlled");
-    options.AddUserProfilePreference("profile.default_content_setting_values.images", 2);
-    options.AddUserProfilePreference("profile.managed_default_content_settings.popups", 2);
-    options.AddUserProfilePreference("profile.managed_default_content_settings.plugins", 2);
-    options.AddUserProfilePreference("profile.managed_default_content_settings.notifications", 2);
-    options.AddUserProfilePreference("profile.managed_default_content_settings.automatic_downloads", 2);
+    string profileDirectory = appSettings.ProfileFolder;
+    options.AddArgument(profileDirectory);
+
+    options.AddArgument("--disable-gpu"); // Desativa a aceleração de hardware via GPU, útil para evitar problemas gráficos.
+    options.AddArgument("--disable-extensions"); // Desativa extensões do navegador, melhorando desempenho e estabilidade.
+    options.AddArgument("--start-maximized"); // Inicia o navegador maximizado para melhor visualização.
+    options.AddExcludedArgument("enable-automation"); // Remove a flag de automação
+    options.AddAdditionalOption("useAutomationExtension", false); // Desativa extensões de automação
+
+    options.AddArgument("--disable-popup-blocking"); // Impede o bloqueio de pop-ups, útil para testes que precisam interagir com eles.
+    //options.AddArgument("--ignore-certificate-errors"); // Ignora erros de certificados SSL, útil para ambientes de teste.
+    //options.AddArgument("--blink-settings=imagesEnabled=false"); // Desativa o carregamento de imagens para melhorar desempenho.
+    //options.AddUserProfilePreference("profile.default_content_setting_values.images", 2);
+    //options.AddUserProfilePreference("profile.managed_default_content_settings.popups", 2);
+    //options.AddUserProfilePreference("profile.managed_default_content_settings.plugins", 2);
+    //options.AddUserProfilePreference("profile.managed_default_content_settings.notifications", 2);
+    //options.AddUserProfilePreference("profile.managed_default_content_settings.automatic_downloads", 2);
 
     var driverService = ChromeDriverService.CreateDefaultService(driverPath);
     return new ChromeDriver(driverService, options);
@@ -260,19 +290,19 @@ void KillDriver(IWebDriver? driver)
 {
     driver.Quit();
 
-    //Reinicia o driver com as configs resetadas
-    ChromeOptions options = new();
-    options.BinaryLocation = @"C:\Program Files\Google\Chrome\Application\chrome.exe";
-    options.AddArgument("user-data-dir=C:\\Users\\matheus.pires\\AppData\\Local\\Google\\Chrome\\User Data");
-    options.AddArgument("profile-directory=Default");
+    //Reinicia o driver com as configs resetadas. Por enquanto o codigo abaixo não está sendo necessário pois não estou utilizando a config de remover imagens
+    //ChromeOptions options = new();
+    //options.BinaryLocation = @"C:\Program Files\Google\Chrome\Application\chrome.exe";
+    //options.AddArgument("user-data-dir=C:\\Users\\matheus.pires\\AppData\\Local\\Google\\Chrome\\User Data");
+    //options.AddArgument("profile-directory=Default");
 
-    options.AddUserProfilePreference("profile.default_content_setting_values.images", 1);
-    options.AddUserProfilePreference("profile.managed_default_content_settings.notifications", 1);
-    options.AddUserProfilePreference("profile.managed_default_content_settings.automatic_downloads", 1);
+    //options.AddUserProfilePreference("profile.default_content_setting_values.images", 1);
+    //options.AddUserProfilePreference("profile.managed_default_content_settings.notifications", 1);
+    //options.AddUserProfilePreference("profile.managed_default_content_settings.automatic_downloads", 1);
 
-    driver = new ChromeDriver(options);
+    //driver = new ChromeDriver(options);
 
-    driver.Quit();
+    //driver.Quit();
 }
 
 void WaitForPageToLoad(int secondsToWait = 10)
@@ -482,7 +512,7 @@ void PopulateCsv()
         throw new NoSuchElementException("Não foi encontrado email remetente. " +
                                          "Favor conferir seletores do robô.");
     }
-    
+
     //Salvo no CSV somente e-mail ainda não obtidos. Não salvo repetidos
     if (!obtainedEmails.Contains(emailSender))
     {
@@ -526,21 +556,34 @@ string GenerateCsvRow(DateTime emailDate, string email)
            $"{emailDate:dd/MM/yyyy};Descadastro;{email}\n";
 }
 
+string GetSpanDateByIndexWithJS(int index)
+{
+    string scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "JsScripts/GetSpanDateByIndex.js");
+    string script = File.ReadAllText(scriptPath);
+
+    return (string)ExecuteJavaScript($"{script} return GetSpanDateByIndex(arguments[0]);", index);
+}
+
+object ExecuteJavaScript(string script, params object[] args)
+{
+    IJavaScriptExecutor jsExecutor = driver;
+    return jsExecutor.ExecuteScript(script, args);
+
+}
 
 #endregion
 
 #region [EMAIL METHODS]
 
-
 void EnviarEmail(string messageBody, string subject)
 {
     using MailMessage message = new();
+    List<string> mailAddressTo = [.. appSettings.RecipientEmails.Split(";")];
 
-    //PRD
-    //message.To.Add(new MailAddress("anagabriela.campos@hotmail.com"));
-    //message.To.Add(new MailAddress("bibianagabriela@gmail.com"));
-    //DEV
-    message.To.Add(new MailAddress("matheuswith51@hotmail.com"));
+    foreach (string mailAddress in mailAddressTo)
+    {
+        message.To.Add(new MailAddress(mailAddress));
+    }
 
     message.Subject = subject;
     message.Body = messageBody;
@@ -559,13 +602,14 @@ void EnviarEmail(string messageBody, string subject)
         byte[] csvBytes = Encoding.UTF8.GetBytes(csvContent);
         byte[] finalBytes = [.. bom, .. csvBytes];
 
-        MemoryStream csvStream = new MemoryStream(finalBytes);
+        MemoryStream csvStream = new(finalBytes);
         Attachment attachment = new(csvStream, $"descadastro_{requestedDate:dd-MM-yyyy}.csv", "text/csv");
 
         message.Attachments.Add(attachment);
 
-        message.Body += $"Em anexo arquivo .csv com os emails descadastrados " +
-                        $"referente ao dia {requestedDate:dd/MM/yyyy}<br />";
+        message.Body += $"<br /> <br />{obtainedEmails.Count} emails foram descadastrados de {NumberOfEmailsAccessed} emails acessados, " +
+                        $"já evitando repetição de emails.<br />" +
+                        $"Segue em anexo arquivo .csv com emails descadastrados referente ao dia {requestedDate:dd/MM/yyyy}.";
     }
     else
     {
@@ -614,11 +658,6 @@ void EnviarEmailErro(Exception ex)
     string subject = "ROBÔ DESCADASTRO";
 
     EnviarEmail(msgBody, subject);
-}
-
-void DelaySegundos(int segundos)
-{
-    Thread.Sleep(1000 * segundos * ExecucaoLenta);
 }
 
 #endregion

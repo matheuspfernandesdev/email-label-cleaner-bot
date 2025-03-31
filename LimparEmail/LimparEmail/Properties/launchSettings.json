@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "LimparEmail": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      },
+      "remoteDebugEnabled": false
+    }
+  }
+}
