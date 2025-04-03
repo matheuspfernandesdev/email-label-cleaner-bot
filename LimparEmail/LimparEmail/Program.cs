@@ -68,10 +68,8 @@ catch (Exception ex)
 
     if (appSettings.SendEmail)
     {
-        using (MemoryStream print = new MemoryStream(screenshot.AsByteArray))
-        {
-            EnviarEmailErro(ex, print);
-        }
+        using MemoryStream print = new(screenshot.AsByteArray);
+        EnviarEmailErro(ex, print);
     }
 }
 finally
@@ -249,14 +247,14 @@ void GetInfoFromEmail(int lineNumberToClick)
                 DelaySegundos(1);
                 driver.FindElement(By.XPath($"(//*[@class='wYeeg'])[{iterator}]")).Click();
                 clickHappened = true;
-                DelaySegundos(2);
+                DelaySegundos(5);
             }
             else if (currentLabel != desiredLabel && !isLast)
             {
                 //Só clica no X dos outros marcadores, se for antes do ultimo
                 driver.FindElement(By.XPath($"(//*[@class='wYeeg'])[{iterator}]")).Click();
                 clickHappened = true;
-                DelaySegundos(1);
+                DelaySegundos(3);
             }
 
             iterator++;
@@ -264,18 +262,26 @@ void GetInfoFromEmail(int lineNumberToClick)
     }
 
     log += $"Clicou em todos os marcadores <br />";
-    WaitForPageToLoad(5);
+    WaitForPageToLoad(3);
 }
 
 ChromeDriver InitializeChromeDriver()
 {
     var options = new ChromeOptions();
 
-    var driverPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Drivers");
+    //var driverPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Drivers");
     options.BinaryLocation = @"C:\Program Files\Google\Chrome\Application\chrome.exe";
 
-    string userDataDir = $"user-data-dir={Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)}\\AppData\\Local\\Google\\Chrome\\User Data";
-    options.AddArgument(userDataDir);
+    string userDataDir = $"{Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)}\\AppData\\Local\\Google\\Chrome\\User Data";
+    var devToolsPortFile = Path.Combine(userDataDir, "DevToolsActivePort");
+
+    if (File.Exists(devToolsPortFile))
+    {
+        File.Delete(devToolsPortFile);
+    }
+
+    string userDataDirOption = $"user-data-dir={userDataDir}";
+    options.AddArgument(userDataDirOption);
 
     string profileDirectory = appSettings.ProfileFolder;
     options.AddArgument(profileDirectory);
@@ -295,8 +301,9 @@ ChromeDriver InitializeChromeDriver()
     //options.AddUserProfilePreference("profile.managed_default_content_settings.notifications", 2);
     //options.AddUserProfilePreference("profile.managed_default_content_settings.automatic_downloads", 2);
 
-    var driverService = ChromeDriverService.CreateDefaultService(driverPath);
-    return new ChromeDriver(driverService, options);
+    //var driverService = ChromeDriverService.CreateDefaultService(driverPath);
+    return new ChromeDriver(options);
+    //return new ChromeDriver(driverService, options);
 }
 
 void KillDriver(IWebDriver? driver)
