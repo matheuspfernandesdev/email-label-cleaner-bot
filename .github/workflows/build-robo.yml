@@ -1,0 +1,35 @@
+name: Build e Deploy do Robô
+
+on:
+  push:
+    branches:
+      - main  # Roda o workflow sempre que houver push na branch main
+
+jobs:
+  build:
+    runs-on: windows-latest  # Usa um runner Windows para compilar
+    
+    steps:
+      - name: Clonar o repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x' # Ajuste conforme a versão do seu projeto
+
+      - name: Criar diretório de publicação
+        run: mkdir -Force C:\Users\runneradmin\Desktop\PublicacaoRoboDescadastro
+
+      - name: Publicar o robô
+        run: dotnet publish -c Release -r win-x64 --self-contained true -o C:\Users\runneradmin\Desktop\PublicacaoRoboDescadastro
+
+      - name: Substituir variáveis no appsettings.Production.json
+        run: |
+          (Get-Content C:\Users\runneradmin\Desktop\PublicacaoRoboDescadastro\appsettings.Production.json) -replace 'VARIAVEL_API', '${{ secrets.API_KEY }}' | Set-Content C:\Users\runneradmin\Desktop\PublicacaoRoboDescadastro\appsettings.Production.json
+
+      - name: Upload dos artefatos para download
+        uses: actions/upload-artifact@v4
+        with:
+          name: PublicacaoRoboDescadastro
+          path: C:\Users\runneradmin\Desktop\PublicacaoRoboDescadastro

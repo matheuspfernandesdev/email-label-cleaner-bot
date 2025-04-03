@@ -605,7 +605,7 @@ void EnviarEmail(string messageBody, string subject, MemoryStream print = null)
     SmtpClient smtp = new("smtp.gmail.com", 587)
     {
         UseDefaultCredentials = false,
-        Credentials = new NetworkCredential("matheuswith@gmail.com", "bmabplzvhlagqdoy"),
+        Credentials = new NetworkCredential("matheuswith@gmail.com", appSettings.SmtpPassword),
         EnableSsl = true
     };
 
