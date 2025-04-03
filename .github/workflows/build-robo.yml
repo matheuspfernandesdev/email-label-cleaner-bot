@@ -22,7 +22,7 @@ jobs:
         run: mkdir -Force C:\Users\runneradmin\Desktop\PublicacaoRoboDescadastro
 
       - name: Publicar o robô
-        run: dotnet publish -c Release -r win-x64 --self-contained true -o C:\Users\runneradmin\Desktop\PublicacaoRoboDescadastro
+        run: dotnet publish LimparEmail/LimparEmail/LimparEmail.csproj -c Release -r win-x64 --self-contained true -o C:\Users\runneradmin\Desktop\PublicacaoRoboDescadastro
 
       - name: Substituir variáveis no appsettings.Production.json
         run: |
