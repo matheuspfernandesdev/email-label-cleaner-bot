@@ -33,6 +33,7 @@ string csvContent = string.Empty;
 DateTime requestedDate = new();
 ChromeDriver? driver = null;
 IConfiguration config;
+string log = string.Empty;
 
 try
 {
@@ -55,14 +56,23 @@ try
         {
             GoToNextEmailPage();
         }
+
+        log = string.Empty;
     } while (ContinueExecution());
 
     EnviarEmailSucesso();
 }
 catch (Exception ex)
 {
+    Screenshot screenshot = ((ITakesScreenshot)driver).GetScreenshot();
+
     if (appSettings.SendEmail)
-        EnviarEmailErro(ex);
+    {
+        using (MemoryStream print = new MemoryStream(screenshot.AsByteArray))
+        {
+            EnviarEmailErro(ex, print);
+        }
+    }
 }
 finally
 {
@@ -168,6 +178,7 @@ void DelaySegundos(int segundos)
 int ReturnLineNumberOfDesiredDate()
 {
     int startLine = PageNumberToInteracte();
+    log += "Obteve numero da pagina para interagir<br />";
 
     DelaySegundos(2);
     var emailElements = driver.FindElements(By.XPath("//td[contains(@class, 'xW') and contains(@class, 'xY')]/span/span"))
@@ -182,8 +193,10 @@ int ReturnLineNumberOfDesiredDate()
         //string spanDate3 = driver.FindElement(By.XPath($"(//td[contains(@class, 'xW') and contains(@class, 'xY')]/span/span)[{i}]")).Text;
 
         string spanDate = GetSpanDateByIndexWithJS(i);
+        log += $"Obteve data do email na linha {i} <br />";
 
         DateTime? parseEmailDateToString = ParseEmailStringToDate(spanDate);
+        log += $"Transformou o texto em data corretamente <br />";
         DateTime currentEmailDate;
 
         if (parseEmailDateToString is null)
@@ -195,6 +208,7 @@ int ReturnLineNumberOfDesiredDate()
 
         if (currentEmailDate.Date == requestedDate.Date)
         {
+            log += $"<br />Retornou numero da linha que deve ser clicavel: {i} <br />";
             return i;
         }
         //A lógica é: o e-mail sempre estar ordenado da maior data para a menor
@@ -215,6 +229,7 @@ void GetInfoFromEmail(int lineNumberToClick)
     NumberOfEmailsAccessed++;
 
     PopulateCsv();
+    log += $"<br />Populou o csv com o email do remetente <br />";
 
     var numberOfLabels = driver.FindElements(By.XPath("//*[@class='ahR']")).Count;
 
@@ -248,6 +263,7 @@ void GetInfoFromEmail(int lineNumberToClick)
         } while (!clickHappened);
     }
 
+    log += $"Clicou em todos os marcadores <br />";
     WaitForPageToLoad(5);
 }
 
@@ -259,9 +275,6 @@ ChromeDriver InitializeChromeDriver()
     options.BinaryLocation = @"C:\Program Files\Google\Chrome\Application\chrome.exe";
 
     string userDataDir = $"user-data-dir={Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)}\\AppData\\Local\\Google\\Chrome\\User Data";
-    Console.WriteLine(userDataDir);
-    Thread.Sleep(3000);
-
     options.AddArgument(userDataDir);
 
     string profileDirectory = appSettings.ProfileFolder;
@@ -575,7 +588,7 @@ object ExecuteJavaScript(string script, params object[] args)
 
 #region [EMAIL METHODS]
 
-void EnviarEmail(string messageBody, string subject)
+void EnviarEmail(string messageBody, string subject, MemoryStream print = null)
 {
     using MailMessage message = new();
     List<string> mailAddressTo = [.. appSettings.RecipientEmails.Split(";")];
@@ -607,9 +620,16 @@ void EnviarEmail(string messageBody, string subject)
 
         message.Attachments.Add(attachment);
 
-        message.Body += $"<br /> <br />{obtainedEmails.Count} emails foram descadastrados de {NumberOfEmailsAccessed} emails acessados, " +
+        if (print is not null)
+        {
+            print.Position = 0;
+            message.Attachments.Add(new Attachment(print, "screenshot.png", "image/png"));
+        }
+
+        message.Body += $"<br /><br />{obtainedEmails.Count} emails foram descadastrados de {NumberOfEmailsAccessed} emails acessados, " +
                         $"já evitando repetição de emails.<br />" +
-                        $"Segue em anexo arquivo .csv com emails descadastrados referente ao dia {requestedDate:dd/MM/yyyy}.";
+                        $"Segue em anexo arquivo .csv com emails descadastrados referente ao dia {requestedDate:dd/MM/yyyy}." +
+                        $"<br /><br />Log da última interação <br />: {log}";
     }
     else
     {
@@ -640,7 +660,7 @@ void EnviarEmailSucesso()
     EnviarEmail(msgBody, subject);
 }
 
-void EnviarEmailErro(Exception ex)
+void EnviarEmailErro(Exception ex, MemoryStream print)
 {
     string msgBody;
 
@@ -657,7 +677,7 @@ void EnviarEmailErro(Exception ex)
 
     string subject = "ROBÔ DESCADASTRO";
 
-    EnviarEmail(msgBody, subject);
+    EnviarEmail(msgBody, subject, print);
 }
 
 #endregion
