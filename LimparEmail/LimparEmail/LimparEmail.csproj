@@ -37,6 +37,9 @@
     <None Update="Drivers\chromedriver.exe">
       <CopyToPublishDirectory>Always</CopyToPublishDirectory>
     </None>
+    <None Update="JsScripts\ClickByXPath.js">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="JsScripts\GetSpanDateByIndex.js">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

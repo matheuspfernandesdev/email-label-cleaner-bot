@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
 using OpenQA.Selenium.Support.UI;
+using System;
 using System.Globalization;
 using System.Net;
 using System.Net.Mail;
@@ -222,7 +223,9 @@ int ReturnLineNumberOfDesiredDate()
 
 void GetInfoFromEmail(int lineNumberToClick)
 {
-    driver.FindElement(By.XPath($"(//*[@class='yX xY '])[{lineNumberToClick}]")).Click();
+    //driver.FindElement(By.XPath($"(//*[@class='yX xY '])[{lineNumberToClick}]")).Click();
+    ClickUsingJS($"(//*[@class='yX xY '])[{lineNumberToClick}]");
+
     WaitForPageToLoad(5);
     NumberOfEmailsAccessed++;
 
@@ -245,7 +248,10 @@ void GetInfoFromEmail(int lineNumberToClick)
             {
                 //Só clica no X do marcador desejado, se for o ultimo
                 DelaySegundos(1);
+
                 driver.FindElement(By.XPath($"(//*[@class='wYeeg'])[{iterator}]")).Click();
+                //ClickUsingJS($"(//*[@class='wYeeg'])[{iterator}]");
+
                 clickHappened = true;
                 DelaySegundos(5);
             }
@@ -253,6 +259,8 @@ void GetInfoFromEmail(int lineNumberToClick)
             {
                 //Só clica no X dos outros marcadores, se for antes do ultimo
                 driver.FindElement(By.XPath($"(//*[@class='wYeeg'])[{iterator}]")).Click();
+                //ClickUsingJS($"(//*[@class='wYeeg'])[{iterator}]");
+
                 clickHappened = true;
                 DelaySegundos(3);
             }
@@ -260,6 +268,8 @@ void GetInfoFromEmail(int lineNumberToClick)
             iterator++;
         } while (!clickHappened);
     }
+
+    //TODO: verificar se estamos no link /label/p1 ou algo parecido. Se não tiver, dar um driver.Navigate().Back();
 
     log += $"Clicou em todos os marcadores <br />";
     WaitForPageToLoad(3);
@@ -584,11 +594,18 @@ string GetSpanDateByIndexWithJS(int index)
     return (string)ExecuteJavaScript($"{script} return GetSpanDateByIndex(arguments[0]);", index);
 }
 
+bool ClickUsingJS(string xpath)
+{
+    string scriptPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "JsScripts/ClickByXPath.js");
+    string script = File.ReadAllText(scriptPath);
+
+    return (bool)ExecuteJavaScript($"{script} return ClickByXPath(arguments[0]);", xpath);
+}
+
 object ExecuteJavaScript(string script, params object[] args)
 {
     IJavaScriptExecutor jsExecutor = driver;
     return jsExecutor.ExecuteScript(script, args);
-
 }
 
 #endregion
