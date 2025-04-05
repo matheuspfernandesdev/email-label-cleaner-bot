@@ -5,6 +5,9 @@ on:
     branches:
       - main  # Roda o workflow sempre que houver push na branch main
 
+permissions:
+  contents: write
+  
 jobs:
   build:
     runs-on: windows-latest  # Usa um runner Windows para compilar
@@ -22,11 +25,11 @@ jobs:
         run: mkdir -Force C:\Users\runneradmin\Desktop\PublicacaoRoboDescadastro
 
       - name: Publicar o robô
-        run: dotnet publish LimparEmail/LimparEmail/LimparEmail.csproj -c Release -r win-x64 --self-contained true -o C:\Users\runneradmin\Desktop\PublicacaoRoboDescadastro
+        run: dotnet publish LimparEmail/LimparEmail/LimparEmail.csproj -c Release -r win-x64 --self-contained true -o PublicacaoRoboDescadastro
 
       - name: Substituir variáveis no appsettings.Production.json
         run: |
-          (Get-Content C:\Users\runneradmin\Desktop\PublicacaoRoboDescadastro\appsettings.Production.json) -replace 'SMTP_PASSWORD', '${{ secrets.SMTP_PASSWORD }}' | Set-Content C:\Users\runneradmin\Desktop\PublicacaoRoboDescadastro\appsettings.Production.json
+          (Get-Content PublicacaoRoboDescadastro/appsettings.Production.json) -replace 'SMTP_PASSWORD', '${{ secrets.SMTP_PASSWORD }}' | Set-Content PublicacaoRoboDescadastro/appsettings.Production.json
 
       - name: Criar um nome de versão único (usando data e commit)
         id: version
@@ -44,4 +47,4 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            C:\Users\runneradmin\Desktop\PublicacaoRoboDescadastro\*
+            PublicacaoRoboDescadastro/**
