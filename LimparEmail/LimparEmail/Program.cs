@@ -11,6 +11,7 @@ using System.Globalization;
 using System.Net;
 using System.Net.Mail;
 using System.Text;
+using System.Text.RegularExpressions;
 
 
 #region [ROBOT EXECUTION]
@@ -32,6 +33,7 @@ const string OrigemClone = "Brius";
 string csvContent = string.Empty;
 
 DateTime requestedDate = new();
+DateTime robotStarted = new();
 ChromeDriver? driver = null;
 IConfiguration config;
 string log = string.Empty;
@@ -65,12 +67,14 @@ try
 }
 catch (Exception ex)
 {
-    Screenshot screenshot = ((ITakesScreenshot)driver).GetScreenshot();
+    Screenshot? screenshot = null;
+
+    if (driver != null)
+        screenshot = ((ITakesScreenshot)driver).GetScreenshot();
 
     if (appSettings.SendEmail)
     {
-        using MemoryStream print = new(screenshot.AsByteArray);
-        EnviarEmailErro(ex, print);
+        EnviarEmailErro(ex, screenshot);
     }
 }
 finally
@@ -223,10 +227,13 @@ int ReturnLineNumberOfDesiredDate()
 
 void GetInfoFromEmail(int lineNumberToClick)
 {
+    //TODO: clicar no mesmo número sempre, pois as linhas vão diminuindo
     //driver.FindElement(By.XPath($"(//*[@class='yX xY '])[{lineNumberToClick}]")).Click();
-    ClickUsingJS($"(//*[@class='yX xY '])[{lineNumberToClick}]");
+    bool clicked = ClickUsingJS($"(//*[@class='yX xY '])[{lineNumberToClick}]");
 
-    WaitForPageToLoad(5);
+    if (!clicked) throw new Exception("Não foi possível clicar com JS no botão que acessa o e-mail!");
+
+    WaitForPageToLoad(3);
     NumberOfEmailsAccessed++;
 
     PopulateCsv();
@@ -244,25 +251,23 @@ void GetInfoFromEmail(int lineNumberToClick)
             var currentLabel = driver.FindElement(By.XPath($"//*[@class='ahR'][{iterator}]/span[1]/div[1]")).Text;
             bool isLast = i == numberOfLabels;
 
+            //Só clica no X do marcador desejado, se for o ultimo
             if (currentLabel == desiredLabel && isLast)
             {
-                //Só clica no X do marcador desejado, se for o ultimo
-                DelaySegundos(1);
-
                 driver.FindElement(By.XPath($"(//*[@class='wYeeg'])[{iterator}]")).Click();
                 //ClickUsingJS($"(//*[@class='wYeeg'])[{iterator}]");
 
                 clickHappened = true;
-                DelaySegundos(5);
+                DelaySegundos(4);
             }
+            //Só clica no X dos outros marcadores, se for antes do ultimo
             else if (currentLabel != desiredLabel && !isLast)
             {
-                //Só clica no X dos outros marcadores, se for antes do ultimo
                 driver.FindElement(By.XPath($"(//*[@class='wYeeg'])[{iterator}]")).Click();
                 //ClickUsingJS($"(//*[@class='wYeeg'])[{iterator}]");
 
                 clickHappened = true;
-                DelaySegundos(3);
+                DelaySegundos(2);
             }
 
             iterator++;
@@ -270,14 +275,22 @@ void GetInfoFromEmail(int lineNumberToClick)
     }
 
     //TODO: verificar se estamos no link /label/p1 ou algo parecido. Se não tiver, dar um driver.Navigate().Back();
+    //string lastPartOfUrl = ReturnUrlPage();
+
+    //if (lastPartOfUrl == desiredLabel ||
+    //    Regex.IsMatch(lastPartOfUrl, @"^p\d+$"))
+    //{
+    //    driver.Navigate().Back();
+    //}
 
     log += $"Clicou em todos os marcadores <br />";
-    WaitForPageToLoad(3);
+    WaitForPageToLoad(2);
 }
 
 ChromeDriver InitializeChromeDriver()
 {
-    var options = new ChromeOptions();
+    robotStarted = DateTime.Now;
+    ChromeOptions options = new();
 
     //var driverPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Drivers");
     options.BinaryLocation = @"C:\Program Files\Google\Chrome\Application\chrome.exe";
@@ -286,9 +299,7 @@ ChromeDriver InitializeChromeDriver()
     var devToolsPortFile = Path.Combine(userDataDir, "DevToolsActivePort");
 
     if (File.Exists(devToolsPortFile))
-    {
         File.Delete(devToolsPortFile);
-    }
 
     string userDataDirOption = $"user-data-dir={userDataDir}";
     options.AddArgument(userDataDirOption);
@@ -337,7 +348,6 @@ void KillDriver(IWebDriver? driver)
 
 void WaitForPageToLoad(int secondsToWait = 10)
 {
-    DelaySegundos(1);
     var wait = new WebDriverWait(driver, TimeSpan.FromSeconds(secondsToWait));
 
     wait.Until(driver => ((IJavaScriptExecutor)driver)
@@ -393,8 +403,7 @@ string ReturnUrlPage()
 void GoToPage(string desiredPage)
 {
     driver.Navigate().GoToUrl(desiredPage);
-    WaitForPageToLoad();
-    IsLabelEmptyPage();
+    WaitForPageToLoad(4);
 }
 
 DateTime? ParseEmailStringToDate(string dateString)
@@ -403,7 +412,6 @@ DateTime? ParseEmailStringToDate(string dateString)
         {
             { "jan", 1 }, { "fev", 2 }, { "mar", 3 }, { "abr", 4 }, { "mai", 5 }, { "jun", 6 },
             { "jul", 7 }, { "ago", 8 }, { "set", 9 }, { "out", 10 }, { "nov", 11 }, { "dez", 12 }
-
         };
 
     var currentDate = DateTime.Today;
@@ -411,7 +419,10 @@ DateTime? ParseEmailStringToDate(string dateString)
 
     if (TimeSpan.TryParse(dateString, out var time))
     {
-        return currentDate.Add(time);
+        if (time < robotStarted.TimeOfDay)
+            return currentDate.Add(time);
+        else
+            return currentDate.AddDays(-1).Add(time);
     }
     else if (dateString.Contains(" de "))
     {
@@ -507,7 +518,7 @@ int PageNumberToInteracte()
 bool IsLabelEmptyPage()
 {
     //Element that shows the text "Não existem conversas com este marcador."
-    return IsElementVisibleAndClickable(By.XPath("//*[@class='TC']"));
+    return IsElementVisibleAndClickable(By.XPath("//*[@class='TC']"), 1);
 }
 
 void CloseExtraTabs()
@@ -684,24 +695,32 @@ void EnviarEmailSucesso()
     EnviarEmail(msgBody, subject);
 }
 
-void EnviarEmailErro(Exception ex, MemoryStream print)
+void EnviarEmailErro(Exception ex, Screenshot? screenshot)
 {
     string msgBody;
 
     if (ex is ValidationException)
     {
         msgBody = $"<h2>Log da execução do robô: <br /><br />" +
-                         $"{WebUtility.HtmlEncode(ex.Message)} ";
+                  $"{WebUtility.HtmlEncode(ex.Message)} ";
     }
     else
     {
         msgBody = $"<h2>Erro encontrado na execução do robô: <br /><br />" +
-                         $"{WebUtility.HtmlEncode(ex.Message)} ";
+                  $"{WebUtility.HtmlEncode(ex.Message)} ";
     }
 
     string subject = "ROBÔ DESCADASTRO";
 
-    EnviarEmail(msgBody, subject, print);
+    if (screenshot?.AsByteArray != null)
+    {
+        using MemoryStream print = new(screenshot.AsByteArray);
+        EnviarEmail(msgBody, subject, print);
+    }
+    else
+    {
+        EnviarEmail(msgBody, subject, null);
+    }
 }
 
 #endregion
