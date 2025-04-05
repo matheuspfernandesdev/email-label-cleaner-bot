@@ -47,4 +47,10 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            PublicacaoRoboDescadastro/**
+            PublicacaoRoboDescadastro.zip
+
+      - name: Exibir link direto da release
+        run: |
+          echo "🔗 Link para download:"
+          echo "https://github.com/${{ github.repository }}/releases/download/${{ env.VERSION }}/PublicacaoRoboDescadastro.zip"
+
