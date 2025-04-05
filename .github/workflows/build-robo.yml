@@ -30,7 +30,10 @@ jobs:
 
       - name: Criar um nome de versão único (usando data e commit)
         id: version
-        run: echo "VERSION=1.0.$(date +%s)" >> $GITHUB_ENV
+        run: |
+          $timestamp = Get-Date -UFormat %s
+          echo "VERSION=1.0.$timestamp" >> $env:GITHUB_ENV
+        shell: pwsh
 
       - name: Criar uma release no GitHub
         uses: softprops/action-gh-release@v2
