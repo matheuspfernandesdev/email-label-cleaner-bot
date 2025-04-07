@@ -17,6 +17,8 @@ using System.Text.RegularExpressions;
 #region [ROBOT EXECUTION]
 
 string urlBase = string.Empty;
+string urlBaseBetweenDates = string.Empty;
+
 string desiredLabel = string.Empty;
 int NumberOfEmailsAccessed = 0;
 AppSettings appSettings = new();
@@ -40,15 +42,18 @@ string log = string.Empty;
 
 try
 {
-    SettingsAppConfig();
+    SettingAppConfig();
     requestedDate = GetDesiredDate();
     driver = InitializeChromeDriver();
 
     CloseExtraTabs();
-    GoToPage(urlBase + urlLabel + desiredLabel + "/p1");
+    GoToPage(urlBaseBetweenDates);
+    //GoToPage(urlBase + urlLabel + desiredLabel + "/p1");
 
     do
     {
+        //Melhor continuar pesquisando o número, pois em algumas buscas pesquisei por exemplo: depois do dia 3 e antes do dia 4
+        //Na teoria deveria retonar só dia 3 pela lógica do filtro, porem retornou um email do dia 4
         var lineNumberToClick = ReturnLineNumberOfDesiredDate();
 
         if (lineNumberToClick != 0)
@@ -86,7 +91,7 @@ finally
 
 #region [CONSOLE METHODS]
 
-void SettingsAppConfig()
+void SettingAppConfig()
 {
     //NOTA: Isso só funciona com o Production se utilizar corretamente no modo debug, então fica aqui como configurar corretamente:
     //Clique com o botão direito no projeto > Properties > Menu Debug > General > Open Debug Launch Profile UI
@@ -102,6 +107,7 @@ void SettingsAppConfig()
                         ?? throw new InvalidOperationException("Erro ao carregar appSettings");
 
     urlBase = appSettings.UrlBase;
+    urlBaseBetweenDates = appSettings.UrlBaseBetweenDates;
     desiredLabel = appSettings.Label;
 }
 
@@ -136,6 +142,9 @@ DateTime GetDesiredDate()
 
         Console.Clear();
     } while (!isValid);
+
+    BetweenDates betweenDates = new(validDate, validDate.AddDays(1));
+    urlBaseBetweenDates = betweenDates.FormatUrl(urlBaseBetweenDates, appSettings.Label);
 
     return validDate;
 }
@@ -184,10 +193,9 @@ int ReturnLineNumberOfDesiredDate()
     log += "Obteve numero da pagina para interagir<br />";
 
     DelaySegundos(2);
-    var emailElements = driver.FindElements(By.XPath("//td[contains(@class, 'xW') and contains(@class, 'xY')]/span/span"))
-                                    ?? throw new Exception("Nenhum e-mail encontrado.");
+    var numberEmailElements = GetAvailableEmailCount();
 
-    for (int i = startLine; i <= emailElements.Count; i++)
+    for (int i = startLine; i <= numberEmailElements; i++)
     {
         //NOTE: Todas essas duas maneiras abaixo, davam certo até algum ponto, e entre o 2º e 15º email parava de pegar a data. 
         //Com o método ByJS não encontrei mais o erro, então manti ele
@@ -203,7 +211,7 @@ int ReturnLineNumberOfDesiredDate()
         DateTime currentEmailDate;
 
         if (parseEmailDateToString is null)
-            throw new Exception($"Padrão de data não reconhecido: {spanDate}. Qtd linhas de span encontradas: {emailElements.Count()}");
+            throw new Exception($"Padrão de data não reconhecido: {spanDate}. Qtd linhas de span encontradas: {numberEmailElements}");
         else
             currentEmailDate = parseEmailDateToString.Value;
 
@@ -225,10 +233,26 @@ int ReturnLineNumberOfDesiredDate()
     return 0;
 }
 
+int GetAvailableEmailCount()
+{
+    string emailsXPath = "//td[contains(@class, 'xW') and contains(@class, 'xY')]/span/span";
+
+    try
+    {
+        return driver.FindElements(By.XPath(emailsXPath)).Count;
+    }
+    catch (Exception)
+    {
+        if (obtainedEmails.Count == 0)
+            throw;
+
+        throw new ValidationException("Finalizou a execução!");
+    }
+}
+
 void GetInfoFromEmail(int lineNumberToClick)
 {
     //TODO: clicar no mesmo número sempre, pois as linhas vão diminuindo
-    //driver.FindElement(By.XPath($"(//*[@class='yX xY '])[{lineNumberToClick}]")).Click();
     bool clicked = ClickUsingJS($"(//*[@class='yX xY '])[{lineNumberToClick}]");
 
     if (!clicked) throw new Exception("Não foi possível clicar com JS no botão que acessa o e-mail!");
@@ -255,8 +279,7 @@ void GetInfoFromEmail(int lineNumberToClick)
             if (currentLabel == desiredLabel && isLast)
             {
                 driver.FindElement(By.XPath($"(//*[@class='wYeeg'])[{iterator}]")).Click();
-                //ClickUsingJS($"(//*[@class='wYeeg'])[{iterator}]");
-
+                driver.Navigate().Back();
                 clickHappened = true;
                 DelaySegundos(4);
             }
@@ -264,7 +287,6 @@ void GetInfoFromEmail(int lineNumberToClick)
             else if (currentLabel != desiredLabel && !isLast)
             {
                 driver.FindElement(By.XPath($"(//*[@class='wYeeg'])[{iterator}]")).Click();
-                //ClickUsingJS($"(//*[@class='wYeeg'])[{iterator}]");
 
                 clickHappened = true;
                 DelaySegundos(2);
@@ -292,7 +314,6 @@ ChromeDriver InitializeChromeDriver()
     robotStarted = DateTime.Now;
     ChromeOptions options = new();
 
-    //var driverPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Drivers");
     options.BinaryLocation = @"C:\Program Files\Google\Chrome\Application\chrome.exe";
 
     string userDataDir = $"{Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)}\\AppData\\Local\\Google\\Chrome\\User Data";
@@ -322,9 +343,7 @@ ChromeDriver InitializeChromeDriver()
     //options.AddUserProfilePreference("profile.managed_default_content_settings.notifications", 2);
     //options.AddUserProfilePreference("profile.managed_default_content_settings.automatic_downloads", 2);
 
-    //var driverService = ChromeDriverService.CreateDefaultService(driverPath);
     return new ChromeDriver(options);
-    //return new ChromeDriver(driverService, options);
 }
 
 void KillDriver(IWebDriver? driver)
@@ -359,7 +378,7 @@ void GoToNextEmailPage()
     int currentPage = GetPageNumber();
     GoToPageNumber(currentPage + 1);
 
-    if (IsLabelEmptyPage()) throw new ValidationException("Chegou ao final das páginas possíveis");
+    if (IsEmptyPage()) throw new ValidationException("Chegou ao final das páginas possíveis");
 }
 
 void GoToPreviousEmailPage()
@@ -371,7 +390,7 @@ void GoToPreviousEmailPage()
         GoToPageNumber(currentPage - 1);
     }
 
-    if (IsLabelEmptyPage()) throw new ValidationException("Chegou ao final das páginas possíveis");
+    if (IsEmptyPage()) throw new ValidationException("Chegou ao final das páginas possíveis");
 }
 
 int GetPageNumber()
@@ -515,7 +534,7 @@ int PageNumberToInteracte()
         return 51;
 }
 
-bool IsLabelEmptyPage()
+bool IsEmptyPage()
 {
     //Element that shows the text "Não existem conversas com este marcador."
     return IsElementVisibleAndClickable(By.XPath("//*[@class='TC']"), 1);
@@ -536,12 +555,13 @@ void CloseExtraTabs()
 }
 
 /// <summary>
-/// Continua execução somente se a data solitada for menor que a ultima data encontrada. 
-/// Quer dizer que ainda existe data 
+/// Continua execução somente se não é uma página vazia OU 
+/// se a ultima data encontrada é diferente da solicitada e já encontrou algum e-mail válido. 
+/// Isso significa que o robô já começou a buscar e terminou de buscar emails da data atual
 /// </summary>
 bool ContinueExecution()
 {
-    return requestedDate.Date <= foundDates.Min();
+    return !IsEmptyPage() || (obtainedEmails.Count != 0 && foundDates.Last() != requestedDate);
 }
 
 void PopulateCsv()
@@ -554,7 +574,6 @@ void PopulateCsv()
                                          "Favor conferir seletores do robô.");
     }
 
-    //Salvo no CSV somente e-mail ainda não obtidos. Não salvo repetidos
     if (!obtainedEmails.Contains(emailSender))
     {
         obtainedEmails.Add(emailSender);

@@ -8,5 +8,6 @@ public class AppSettings
     public string ProfileFolder { get; set; } = string.Empty;
     public string RecipientEmails { get; set; } = string.Empty;
     public string UrlBase { get; set; } = string.Empty;
+    public string UrlBaseBetweenDates { get; set; } = string.Empty;
     public string SmtpPassword { get; set; } = string.Empty;
 }
