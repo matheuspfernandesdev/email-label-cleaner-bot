@@ -48,6 +48,10 @@ try
 
     CloseExtraTabs();
     GoToPage(urlBaseBetweenDates);
+    //TODO: ao acessar essa tela aqui, verificar se algum elemento especifico está presente
+    //Pois se acessa uma tela qualquer, ele continua interando por várias páginas
+
+    DelaySegundos(1);
     //GoToPage(urlBase + urlLabel + desiredLabel + "/p1");
 
     do
@@ -192,7 +196,6 @@ int ReturnLineNumberOfDesiredDate()
     int startLine = PageNumberToInteracte();
     log += "Obteve numero da pagina para interagir<br />";
 
-    DelaySegundos(2);
     var numberEmailElements = GetAvailableEmailCount();
 
     for (int i = startLine; i <= numberEmailElements; i++)
@@ -279,9 +282,11 @@ void GetInfoFromEmail(int lineNumberToClick)
             if (currentLabel == desiredLabel && isLast)
             {
                 driver.FindElement(By.XPath($"(//*[@class='wYeeg'])[{iterator}]")).Click();
-                driver.Navigate().Back();
                 clickHappened = true;
-                DelaySegundos(4);
+
+                DelaySegundos(1);
+                driver.Navigate().Back();
+                DelaySegundos(3);
             }
             //Só clica no X dos outros marcadores, se for antes do ultimo
             else if (currentLabel != desiredLabel && !isLast)
@@ -289,7 +294,7 @@ void GetInfoFromEmail(int lineNumberToClick)
                 driver.FindElement(By.XPath($"(//*[@class='wYeeg'])[{iterator}]")).Click();
 
                 clickHappened = true;
-                DelaySegundos(2);
+                DelaySegundos(1);
             }
 
             iterator++;
@@ -537,7 +542,7 @@ int PageNumberToInteracte()
 bool IsEmptyPage()
 {
     //Element that shows the text "Não existem conversas com este marcador."
-    return IsElementVisibleAndClickable(By.XPath("//*[@class='TC']"), 1);
+    return IsElementVisibleAndClickable(By.XPath("//*[@class='TD']/*[@class='TC']"), 1);
 }
 
 void CloseExtraTabs()
@@ -682,8 +687,9 @@ void EnviarEmail(string messageBody, string subject, MemoryStream print = null)
 
         message.Body += $"<br /><br />{obtainedEmails.Count} emails foram descadastrados de {NumberOfEmailsAccessed} emails acessados, " +
                         $"já evitando repetição de emails.<br />" +
-                        $"Segue em anexo arquivo .csv com emails descadastrados referente ao dia {requestedDate:dd/MM/yyyy}." +
-                        $"<br /><br />Log da última interação <br />: {log}";
+                        $"Segue em anexo arquivo .csv com emails descadastrados referente ao dia {requestedDate:dd/MM/yyyy}." 
+                        //+ $"<br /><br />Log da última interação <br />: {log}"
+                        ;
     }
     else
     {
