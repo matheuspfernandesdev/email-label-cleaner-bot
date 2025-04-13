@@ -6,18 +6,15 @@ using Microsoft.Extensions.Configuration;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
 using OpenQA.Selenium.Support.UI;
-using System;
 using System.Globalization;
 using System.Net;
 using System.Net.Mail;
-using System.Text;
-using System.Text.RegularExpressions;
-
 
 #region [ROBOT EXECUTION]
 
 string urlBase = string.Empty;
 string urlBaseBetweenDates = string.Empty;
+string nomeOutput = string.Empty;
 
 string desiredLabel = string.Empty;
 int NumberOfEmailsAccessed = 0;
@@ -29,7 +26,7 @@ CurrentIterationPages currentIterationPages = new();
 List<string> obtainedEmails = [];
 List<DateTime> foundDates = [];
 
-const string csvHeader = "Visto por;Data da visualização;Origem / Clone;Data da solicitação;Demanda;Email\n";
+const string csvHeader = $"Visto por;Data da visualização;Origem / Clone;Data da solicitação;Demanda;Email";
 const string VistoPor = "Ana Gabriela";
 const string OrigemClone = "Brius";
 string csvContent = string.Empty;
@@ -38,21 +35,20 @@ DateTime requestedDate = new();
 DateTime robotStarted = new();
 ChromeDriver? driver = null;
 IConfiguration config;
-string log = string.Empty;
 
 try
 {
     SettingAppConfig();
-    requestedDate = GetDesiredDate();
-    driver = InitializeChromeDriver();
+    using var sleepBlocker = new SystemSleepBlocker();
 
+    GetDesiredDate();
+    InitializeChromeDriver();
     CloseExtraTabs();
     GoToPage(urlBaseBetweenDates);
     //TODO: ao acessar essa tela aqui, verificar se algum elemento especifico está presente
     //Pois se acessa uma tela qualquer, ele continua interando por várias páginas
 
     DelaySegundos(1);
-    //GoToPage(urlBase + urlLabel + desiredLabel + "/p1");
 
     do
     {
@@ -60,16 +56,16 @@ try
         //Na teoria deveria retonar só dia 3 pela lógica do filtro, porem retornou um email do dia 4
         var lineNumberToClick = ReturnLineNumberOfDesiredDate();
 
-        if (lineNumberToClick != 0)
-        {
-            GetInfoFromEmail(lineNumberToClick);
-        }
-        else
-        {
-            GoToNextEmailPage();
-        }
+        //if (lineNumberToClick != 0)
+        //{
+        ProcessEmail(lineNumberToClick);
+        //}
+        //else
+        //{
+        //    GoToNextEmailPage();
+        //}
 
-        log = string.Empty;
+        LogHelper.SalvarLog("\r\n\r\n", nomeOutput + ".txt");
     } while (ContinueExecution());
 
     EnviarEmailSucesso();
@@ -89,6 +85,7 @@ catch (Exception ex)
 finally
 {
     KillDriver(driver);
+    Environment.Exit(0);
 }
 
 #endregion
@@ -115,7 +112,7 @@ void SettingAppConfig()
     desiredLabel = appSettings.Label;
 }
 
-DateTime GetDesiredDate()
+void GetDesiredDate()
 {
     string? inputDate;
     DateTime validDate;
@@ -130,7 +127,7 @@ DateTime GetDesiredDate()
         inputDate = Console.ReadLine();
 
         isValid = DateTime.TryParseExact(inputDate, "dd/MM/yyyy",
-            CultureInfo.InvariantCulture, DateTimeStyles.None, out validDate) && validDate.Date <= DateTime.Now.Date;
+            CultureInfo.InvariantCulture, DateTimeStyles.None, out validDate) && validDate <= DateTime.Now;
 
         if (!isValid)
         {
@@ -150,7 +147,9 @@ DateTime GetDesiredDate()
     BetweenDates betweenDates = new(validDate, validDate.AddDays(1));
     urlBaseBetweenDates = betweenDates.FormatUrl(urlBaseBetweenDates, appSettings.Label);
 
-    return validDate;
+    requestedDate = validDate.Date + DateTime.Now.TimeOfDay;
+    nomeOutput = $"descadastro_{requestedDate:dd-MM-yyyy_HH-mm-ss}";
+    LogHelper.SalvarCsv(csvHeader, nomeOutput + ".csv");
 }
 
 string GetDesiredLabel()
@@ -193,8 +192,9 @@ void DelaySegundos(int segundos)
 
 int ReturnLineNumberOfDesiredDate()
 {
-    int startLine = PageNumberToInteracte();
-    log += "Obteve numero da pagina para interagir<br />";
+    //int startLine = PageNumberToInteracte();
+    int startLine = 1;
+    LogHelper.SalvarLog("Obteve numero da pagina para interagir.", nomeOutput + ".txt");
 
     var numberEmailElements = GetAvailableEmailCount();
 
@@ -207,10 +207,11 @@ int ReturnLineNumberOfDesiredDate()
         //string spanDate3 = driver.FindElement(By.XPath($"(//td[contains(@class, 'xW') and contains(@class, 'xY')]/span/span)[{i}]")).Text;
 
         string spanDate = GetSpanDateByIndexWithJS(i);
-        log += $"Obteve data do email na linha {i} <br />";
+        LogHelper.SalvarLog($"Obteve data do email na linha {i}", nomeOutput + ".txt");
 
         DateTime? parseEmailDateToString = ParseEmailStringToDate(spanDate);
-        log += $"Transformou o texto em data corretamente <br />";
+        LogHelper.SalvarLog("Transformou o texto em data corretamente", nomeOutput + ".txt");
+
         DateTime currentEmailDate;
 
         if (parseEmailDateToString is null)
@@ -222,7 +223,7 @@ int ReturnLineNumberOfDesiredDate()
 
         if (currentEmailDate.Date == requestedDate.Date)
         {
-            log += $"<br />Retornou numero da linha que deve ser clicavel: {i} <br />";
+            LogHelper.SalvarLog($"Retornou numero da linha que deve ser clicável: {i}", nomeOutput + ".txt");
             return i;
         }
         //A lógica é: o e-mail sempre estar ordenado da maior data para a menor
@@ -239,82 +240,48 @@ int ReturnLineNumberOfDesiredDate()
 int GetAvailableEmailCount()
 {
     string emailsXPath = "//td[contains(@class, 'xW') and contains(@class, 'xY')]/span/span";
+    int countEmails;
 
     try
     {
-        return driver.FindElements(By.XPath(emailsXPath)).Count;
+        countEmails = driver.FindElements(By.XPath(emailsXPath)).Count;
     }
     catch (Exception)
     {
         if (obtainedEmails.Count == 0)
-            throw;
+            throw new ValidationException("Nenhum e-mail encontrado!");
 
         throw new ValidationException("Finalizou a execução!");
     }
-}
 
-void GetInfoFromEmail(int lineNumberToClick)
-{
-    //TODO: clicar no mesmo número sempre, pois as linhas vão diminuindo
-    bool clicked = ClickUsingJS($"(//*[@class='yX xY '])[{lineNumberToClick}]");
-
-    if (!clicked) throw new Exception("Não foi possível clicar com JS no botão que acessa o e-mail!");
-
-    WaitForPageToLoad(3);
-    NumberOfEmailsAccessed++;
-
-    PopulateCsv();
-    log += $"<br />Populou o csv com o email do remetente <br />";
-
-    var numberOfLabels = driver.FindElements(By.XPath("//*[@class='ahR']")).Count;
-
-    for (int i = 1; i <= numberOfLabels; i++)
+    if (countEmails > 0)
     {
-        bool clickHappened = false;
-        var iterator = 1;
-
-        do
-        {
-            var currentLabel = driver.FindElement(By.XPath($"//*[@class='ahR'][{iterator}]/span[1]/div[1]")).Text;
-            bool isLast = i == numberOfLabels;
-
-            //Só clica no X do marcador desejado, se for o ultimo
-            if (currentLabel == desiredLabel && isLast)
-            {
-                driver.FindElement(By.XPath($"(//*[@class='wYeeg'])[{iterator}]")).Click();
-                clickHappened = true;
-
-                DelaySegundos(1);
-                driver.Navigate().Back();
-                DelaySegundos(3);
-            }
-            //Só clica no X dos outros marcadores, se for antes do ultimo
-            else if (currentLabel != desiredLabel && !isLast)
-            {
-                driver.FindElement(By.XPath($"(//*[@class='wYeeg'])[{iterator}]")).Click();
-
-                clickHappened = true;
-                DelaySegundos(1);
-            }
-
-            iterator++;
-        } while (!clickHappened);
+        return countEmails;
+    }
+    else if (obtainedEmails.Count == 0)
+    {
+        throw new ValidationException("Nenhum e-mail encontrado!");
     }
 
-    //TODO: verificar se estamos no link /label/p1 ou algo parecido. Se não tiver, dar um driver.Navigate().Back();
-    //string lastPartOfUrl = ReturnUrlPage();
-
-    //if (lastPartOfUrl == desiredLabel ||
-    //    Regex.IsMatch(lastPartOfUrl, @"^p\d+$"))
-    //{
-    //    driver.Navigate().Back();
-    //}
-
-    log += $"Clicou em todos os marcadores <br />";
-    WaitForPageToLoad(2);
+    throw new ValidationException("Finalizou a execução!");
 }
 
-ChromeDriver InitializeChromeDriver()
+void ProcessEmail(int lineNumberToClick)
+{
+    //TODO: clicar no mesmo número sempre, pois as linhas vão diminuindo
+    //bool clicked = ClickUsingJS($"(//*[@class='yX xY '])[{lineNumberToClick}]");
+    //DelaySegundos(1);
+
+    //if (!clicked) throw new Exception("Não foi possível clicar com JS no botão que acessa o e-mail!");
+
+    //bool isAtEmailScreen = IsElementVisibleAndClickable(By.XPath("//*[@class='wYeeg']"));
+
+    ClickInEmail(lineNumberToClick);
+    PopulateCsv();
+    RemoveLabelsAndReturnPage();
+}
+
+void InitializeChromeDriver()
 {
     robotStarted = DateTime.Now;
     ChromeOptions options = new();
@@ -330,6 +297,7 @@ ChromeDriver InitializeChromeDriver()
     string userDataDirOption = $"user-data-dir={userDataDir}";
     options.AddArgument(userDataDirOption);
 
+    //chrome://version/ -> Use para obter qual profile informar, na opção Caminho do perfil
     string profileDirectory = appSettings.ProfileFolder;
     options.AddArgument(profileDirectory);
 
@@ -348,7 +316,7 @@ ChromeDriver InitializeChromeDriver()
     //options.AddUserProfilePreference("profile.managed_default_content_settings.notifications", 2);
     //options.AddUserProfilePreference("profile.managed_default_content_settings.automatic_downloads", 2);
 
-    return new ChromeDriver(options);
+    driver = new ChromeDriver(options);
 }
 
 void KillDriver(IWebDriver? driver)
@@ -542,7 +510,7 @@ int PageNumberToInteracte()
 bool IsEmptyPage()
 {
     //Element that shows the text "Não existem conversas com este marcador."
-    return IsElementVisibleAndClickable(By.XPath("//*[@class='TD']/*[@class='TC']"), 1);
+    return IsElementVisibleAndClickable(By.XPath("//*[@class='TD']/*[@class='TC']"), 2);
 }
 
 void CloseExtraTabs()
@@ -569,6 +537,14 @@ bool ContinueExecution()
     return !IsEmptyPage() || (obtainedEmails.Count != 0 && foundDates.Last() != requestedDate);
 }
 
+void ClickInEmail(int lineNumberToClick)
+{
+    driver.FindElement(By.XPath($"(//*[@class='yX xY '])[{lineNumberToClick}]")).Click();
+
+    DelaySegundos(2);
+    NumberOfEmailsAccessed++;
+}
+
 void PopulateCsv()
 {
     string emailSender = GetEmailSender();
@@ -583,10 +559,52 @@ void PopulateCsv()
     {
         obtainedEmails.Add(emailSender);
 
-        if (string.IsNullOrWhiteSpace(csvContent)) csvContent = csvHeader;
-
-        csvContent += GenerateCsvRow(foundDates.Last(), emailSender);
+        csvContent = GenerateCsvRow(foundDates.Last(), emailSender);
+        LogHelper.SalvarCsv(csvContent, nomeOutput + ".csv");
     }
+
+    LogHelper.SalvarLog($"Populou o csv com o email do remetente.", nomeOutput + ".txt");
+}
+
+void RemoveLabelsAndReturnPage()
+{
+    var numberOfLabels = driver.FindElements(By.XPath("//*[@class='ahR']")).Count;
+
+    for (int i = 1; i <= numberOfLabels; i++)
+    {
+        bool clickHappened = false;
+        var iterator = 1;
+
+        do
+        {
+            var currentLabel = driver.FindElement(By.XPath($"//*[@class='ahR'][{iterator}]/span[1]/div[1]")).Text;
+            bool isLast = i == numberOfLabels;
+
+            //Só clica no X do marcador desejado, se for o ultimo
+            if (currentLabel == desiredLabel && isLast)
+            {
+                driver.FindElement(By.XPath($"(//*[@class='wYeeg'])[{iterator}]")).Click();
+                clickHappened = true;
+
+                DelaySegundos(1);
+                driver.Navigate().Back();
+                DelaySegundos(3);
+            }
+            //Só clica no X dos outros marcadores, se for antes do ultimo
+            else if (currentLabel != desiredLabel && !isLast)
+            {
+                driver.FindElement(By.XPath($"(//*[@class='wYeeg'])[{iterator}]")).Click();
+
+                clickHappened = true;
+                DelaySegundos(2);
+            }
+
+            iterator++;
+        } while (!clickHappened);
+    }
+
+    LogHelper.SalvarLog("Clicou em todos os marcadores e voltou uma página", nomeOutput + ".txt");
+    WaitForPageToLoad(2);
 }
 
 string GetEmailSender()
@@ -618,7 +636,7 @@ string GetEmailSender()
 string GenerateCsvRow(DateTime emailDate, string email)
 {
     return $"{VistoPor};{DateTime.Now:dd/MM/yyyy};{OrigemClone};" +
-           $"{emailDate:dd/MM/yyyy};Descadastro;{email}\n";
+           $"{emailDate:dd/MM/yyyy};Descadastro;{email}";
 }
 
 string GetSpanDateByIndexWithJS(int index)
@@ -670,14 +688,17 @@ void EnviarEmail(string messageBody, string subject, MemoryStream print = null)
 
     if (!string.IsNullOrWhiteSpace(csvContent))
     {
-        byte[] bom = Encoding.UTF8.GetPreamble();
-        byte[] csvBytes = Encoding.UTF8.GetBytes(csvContent);
-        byte[] finalBytes = [.. bom, .. csvBytes];
+        string caminhoCsv = Path.Combine(AppContext.BaseDirectory, "Output", nomeOutput + ".csv");
 
-        MemoryStream csvStream = new(finalBytes);
-        Attachment attachment = new(csvStream, $"descadastro_{requestedDate:dd-MM-yyyy}.csv", "text/csv");
-
-        message.Attachments.Add(attachment);
+        if (File.Exists(caminhoCsv))
+        {
+            Attachment attachment = new(caminhoCsv);
+            message.Attachments.Add(attachment);
+        }
+        else
+        {
+            LogHelper.SalvarLog("Arquivo CSV não encontrado para envio.", nomeOutput + ".txt");
+        }
 
         if (print is not null)
         {
@@ -687,8 +708,7 @@ void EnviarEmail(string messageBody, string subject, MemoryStream print = null)
 
         message.Body += $"<br /><br />{obtainedEmails.Count} emails foram descadastrados de {NumberOfEmailsAccessed} emails acessados, " +
                         $"já evitando repetição de emails.<br />" +
-                        $"Segue em anexo arquivo .csv com emails descadastrados referente ao dia {requestedDate:dd/MM/yyyy}." 
-                        //+ $"<br /><br />Log da última interação <br />: {log}"
+                        $"Segue em anexo arquivo .csv com emails descadastrados referente ao dia {requestedDate:dd/MM/yyyy}."
                         ;
     }
     else
@@ -713,7 +733,7 @@ void EnviarEmail(string messageBody, string subject, MemoryStream print = null)
 
 void EnviarEmailSucesso()
 {
-    string msgBody = $"<h2>Sucesso na execução do robô de descadastro. ";
+    string msgBody = $"<h2>Sucesso na execução do robô de descadastro.";
 
     string subject = "EMAILS DESCADASTRADOS";
 
