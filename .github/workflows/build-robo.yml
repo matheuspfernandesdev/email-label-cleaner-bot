@@ -28,6 +28,13 @@ jobs:
       - name: Publicar o robô
         run: dotnet publish LimparEmail/LimparEmail/LimparEmail.csproj -c Release -r win-x64 --self-contained true -o .\PublicacaoRoboDescadastro
 
+      - name: Assinar o executável
+        run: |
+          $certPath = "$(Resolve-Path ./certs/seu-certificado.pfx)"
+          $exePath = "$(Resolve-Path ./PublicacaoRoboDescadastro/LimparEmail.exe)"
+          signtool sign /f "$certPath" /p "${{ secrets.CERT_PASSWORD }}" /t http://timestamp.digicert.com "$exePath"
+        shell: pwsh
+        
       - name: Substituir variáveis no appsettings.Production.json
         run: |
           (Get-Content .\PublicacaoRoboDescadastro\appsettings.Production.json) -replace 'SMTP_PASSWORD', '${{ secrets.SMTP_PASSWORD }}' | Set-Content .\PublicacaoRoboDescadastro\appsettings.Production.json
