@@ -5,13 +5,13 @@ Um robô automatizado em C# que utiliza Selenium e o Google Chrome para acessar 
 
 🔹 Recursos
 
-✅ Acessa o Gmail via automação de navegador
+✅ Acessa o Gmail via automação de navegador.
 
-✅ Identifica e remove e-mails de uma label/marcador específico
+✅ Identifica e remove e-mails de uma label/marcador específico.
 
-✅ Simula interações humanas para evitar bloqueios
+✅ Simula interações humanas para evitar bloqueios.
 
-✅ Configuração simples e personalizável
+✅ Configuração simples e personalizável.
 
 🚀 Como funciona?
 O bot utiliza o Selenium WebDriver para abrir o Gmail no Google Chrome, navegar até a label desejada e executar a limpeza dos e-mails conforme as regras definidas.
