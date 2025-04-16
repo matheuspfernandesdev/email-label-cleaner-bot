@@ -30,7 +30,7 @@ jobs:
 
       - name: Assinar o executável
         run: |
-          $certPath = "$(Resolve-Path ./certs/seu-certificado.pfx)"
+          $certPath = "$(Resolve-Path ./certs/certificado-descadastro.pfx)"
           $exePath = "$(Resolve-Path ./PublicacaoRoboDescadastro/LimparEmail.exe)"
           signtool sign /f "$certPath" /p "${{ secrets.CERT_PASSWORD }}" /t http://timestamp.digicert.com "$exePath"
         shell: pwsh
