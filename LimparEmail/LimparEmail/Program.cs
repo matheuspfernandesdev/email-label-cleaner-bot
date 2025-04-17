@@ -296,7 +296,6 @@ void ProcessEmail(int lineNumberToClick)
 
     ClickInEmail(lineNumberToClick);
     PopulateCsv();
-    throw new Exception("ceperinha");
     RemoveLabelsAndReturnPage();
 }
 
