@@ -14,7 +14,9 @@ using System.Net.Mail;
 
 string urlBase = string.Empty;
 string urlBaseBetweenDates = string.Empty;
-string nomeOutput = string.Empty;
+int numberOfExecutions;
+string nomeOutputCsv = string.Empty;
+string nomeOutputLog = string.Empty;
 
 string desiredLabel = string.Empty;
 int NumberOfEmailsAccessed = 0;
@@ -44,34 +46,44 @@ try
     GetDesiredDate();
     InitializeChromeDriver();
     CloseExtraTabs();
-    GoToPage(urlBaseBetweenDates);
-    //TODO: ao acessar essa tela aqui, verificar se algum elemento especifico está presente
-    //Pois se acessa uma tela qualquer, ele continua interando por várias páginas
 
-    DelaySegundos(1);
-
-    do
+    for (int i = 1; i <= numberOfExecutions; i++)
     {
-        //Melhor continuar pesquisando o número, pois em algumas buscas pesquisei por exemplo: depois do dia 3 e antes do dia 4
-        //Na teoria deveria retonar só dia 3 pela lógica do filtro, porem retornou um email do dia 4
-        var lineNumberToClick = ReturnLineNumberOfDesiredDate();
+        try
+        {
+            LogHelper.SalvarLog($"Execução número {i}\r\n\r\n", nomeOutputLog);
 
-        //if (lineNumberToClick != 0)
-        //{
-        ProcessEmail(lineNumberToClick);
-        //}
-        //else
-        //{
-        //    GoToNextEmailPage();
-        //}
+            GoToPage(urlBaseBetweenDates);
+            if (IsEmptyPage()) break;
 
-        LogHelper.SalvarLog("\r\n\r\n", nomeOutput + ".txt");
-    } while (ContinueExecution());
+            DelaySegundos(1);
+
+            do
+            {
+                var lineNumberToClick = ReturnLineNumberOfDesiredDate();
+
+                ProcessEmail(lineNumberToClick);
+
+                LogHelper.SalvarLog("\r\n\r\n", nomeOutputLog);
+
+            } while (ContinueExecution());
+        }
+        catch (Exception ex)
+        {
+            LogHelper.SalvarLog($"Erro na execução {i} do robô: {ex.Message} - {ex.StackTrace} - " +
+                                $"{ex.InnerException}\r\n\r\n", nomeOutputLog);
+
+            if (ex is ValidationException || i == numberOfExecutions) 
+                throw;
+        }
+    }
 
     EnviarEmailSucesso();
 }
 catch (Exception ex)
 {
+    LogHelper.SalvarLog($"O robô foi finalizado pelo seguite motivo: {ex.Message} - {ex.StackTrace} - {ex.InnerException}", nomeOutputLog);
+
     Screenshot? screenshot = null;
 
     if (driver != null)
@@ -86,6 +98,8 @@ finally
 {
     KillDriver(driver);
     Environment.Exit(0);
+
+    LogHelper.SalvarLog("Finalizou a execução do robô", nomeOutputLog);
 }
 
 #endregion
@@ -110,6 +124,7 @@ void SettingAppConfig()
     urlBase = appSettings.UrlBase;
     urlBaseBetweenDates = appSettings.UrlBaseBetweenDates;
     desiredLabel = appSettings.Label;
+    numberOfExecutions = appSettings.NumberOfExecutions;
 }
 
 void GetDesiredDate()
@@ -148,8 +163,11 @@ void GetDesiredDate()
     urlBaseBetweenDates = betweenDates.FormatUrl(urlBaseBetweenDates, appSettings.Label);
 
     requestedDate = validDate.Date + DateTime.Now.TimeOfDay;
-    nomeOutput = $"descadastro_{requestedDate:dd-MM-yyyy_HH-mm-ss}";
-    LogHelper.SalvarCsv(csvHeader, nomeOutput + ".csv");
+
+    nomeOutputCsv = $"descadastro_{requestedDate:dd-MM-yyyy_HH-mm-ss}.csv";
+    nomeOutputLog = $"descadastro_{requestedDate:dd-MM-yyyy_HH-mm-ss}.txt";
+
+    LogHelper.SalvarCsv(csvHeader, nomeOutputCsv);
 }
 
 string GetDesiredLabel()
@@ -194,7 +212,7 @@ int ReturnLineNumberOfDesiredDate()
 {
     //int startLine = PageNumberToInteracte();
     int startLine = 1;
-    LogHelper.SalvarLog("Obteve numero da pagina para interagir.", nomeOutput + ".txt");
+    LogHelper.SalvarLog("Obteve numero da pagina para interagir.", nomeOutputLog);
 
     var numberEmailElements = GetAvailableEmailCount();
 
@@ -207,15 +225,15 @@ int ReturnLineNumberOfDesiredDate()
         //string spanDate3 = driver.FindElement(By.XPath($"(//td[contains(@class, 'xW') and contains(@class, 'xY')]/span/span)[{i}]")).Text;
 
         string spanDate = GetSpanDateByIndexWithJS(i);
-        LogHelper.SalvarLog($"Obteve data do email na linha {i}", nomeOutput + ".txt");
+        LogHelper.SalvarLog($"Obteve data do email na linha {i}", nomeOutputLog);
 
         DateTime? parseEmailDateToString = ParseEmailStringToDate(spanDate);
-        LogHelper.SalvarLog("Transformou o texto em data corretamente", nomeOutput + ".txt");
+        LogHelper.SalvarLog("Transformou o texto em data corretamente", nomeOutputLog);
 
         DateTime currentEmailDate;
 
         if (parseEmailDateToString is null)
-            throw new Exception($"Padrão de data não reconhecido: {spanDate}. Qtd linhas de span encontradas: {numberEmailElements}");
+            throw new ValidationException($"Padrão de data não reconhecido: {spanDate}. Qtd linhas de span encontradas: {numberEmailElements}");
         else
             currentEmailDate = parseEmailDateToString.Value;
 
@@ -223,7 +241,7 @@ int ReturnLineNumberOfDesiredDate()
 
         if (currentEmailDate.Date == requestedDate.Date)
         {
-            LogHelper.SalvarLog($"Retornou numero da linha que deve ser clicável: {i}", nomeOutput + ".txt");
+            LogHelper.SalvarLog($"Retornou numero da linha que deve ser clicável: {i}", nomeOutputLog);
             return i;
         }
         //A lógica é: o e-mail sempre estar ordenado da maior data para a menor
@@ -278,6 +296,7 @@ void ProcessEmail(int lineNumberToClick)
 
     ClickInEmail(lineNumberToClick);
     PopulateCsv();
+    throw new Exception("ceperinha");
     RemoveLabelsAndReturnPage();
 }
 
@@ -317,11 +336,14 @@ void InitializeChromeDriver()
     //options.AddUserProfilePreference("profile.managed_default_content_settings.automatic_downloads", 2);
 
     driver = new ChromeDriver(options);
+    LogHelper.SalvarLog("Inicializou o Chrome", nomeOutputLog);
 }
 
 void KillDriver(IWebDriver? driver)
 {
     driver.Quit();
+
+    LogHelper.SalvarLog("Finalizou o Chrome", nomeOutputLog);
 
     //Reinicia o driver com as configs resetadas. Por enquanto o codigo abaixo não está sendo necessário pois não estou utilizando a config de remover imagens
     //ChromeOptions options = new();
@@ -396,6 +418,8 @@ void GoToPage(string desiredPage)
 {
     driver.Navigate().GoToUrl(desiredPage);
     WaitForPageToLoad(4);
+
+    LogHelper.SalvarLog($"Acessou a página {desiredPage}", nomeOutputLog);
 }
 
 DateTime? ParseEmailStringToDate(string dateString)
@@ -560,10 +584,10 @@ void PopulateCsv()
         obtainedEmails.Add(emailSender);
 
         csvContent = GenerateCsvRow(foundDates.Last(), emailSender);
-        LogHelper.SalvarCsv(csvContent, nomeOutput + ".csv");
+        LogHelper.SalvarCsv(csvContent, nomeOutputCsv);
     }
 
-    LogHelper.SalvarLog($"Populou o csv com o email do remetente.", nomeOutput + ".txt");
+    LogHelper.SalvarLog($"Populou o csv com o email do remetente.", nomeOutputLog);
 }
 
 void RemoveLabelsAndReturnPage()
@@ -603,7 +627,7 @@ void RemoveLabelsAndReturnPage()
         } while (!clickHappened);
     }
 
-    LogHelper.SalvarLog("Clicou em todos os marcadores e voltou uma página", nomeOutput + ".txt");
+    LogHelper.SalvarLog("Clicou em todos os marcadores e voltou uma página", nomeOutputLog);
     WaitForPageToLoad(2);
 }
 
@@ -688,7 +712,7 @@ void EnviarEmail(string messageBody, string subject, MemoryStream print = null)
 
     if (!string.IsNullOrWhiteSpace(csvContent))
     {
-        string caminhoCsv = Path.Combine(AppContext.BaseDirectory, "Output", nomeOutput + ".csv");
+        string caminhoCsv = Path.Combine(AppContext.BaseDirectory, "Output", nomeOutputCsv);
 
         if (File.Exists(caminhoCsv))
         {
@@ -697,7 +721,7 @@ void EnviarEmail(string messageBody, string subject, MemoryStream print = null)
         }
         else
         {
-            LogHelper.SalvarLog("Arquivo CSV não encontrado para envio.", nomeOutput + ".txt");
+            LogHelper.SalvarLog("Arquivo CSV não encontrado para envio.", nomeOutputLog);
         }
 
         if (print is not null)
@@ -729,6 +753,8 @@ void EnviarEmail(string messageBody, string subject, MemoryStream print = null)
             attach.ContentStream?.Dispose();
         }
     }
+
+    LogHelper.SalvarLog("Enviou e-mail", nomeOutputLog);
 }
 
 void EnviarEmailSucesso()
@@ -746,13 +772,11 @@ void EnviarEmailErro(Exception ex, Screenshot? screenshot)
 
     if (ex is ValidationException)
     {
-        msgBody = $"<h2>Log da execução do robô: <br /><br />" +
-                  $"{WebUtility.HtmlEncode(ex.Message)} ";
+        msgBody = $"<h2>Log da execução do robô: <br /><br />";
     }
     else
     {
-        msgBody = $"<h2>Erro encontrado na execução do robô: <br /><br />" +
-                  $"{WebUtility.HtmlEncode(ex.Message)} ";
+        msgBody = $"<h2>Erro encontrado na execução do robô: <br /><br />";
     }
 
     string subject = "ROBÔ DESCADASTRO";

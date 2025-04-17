@@ -4,6 +4,7 @@ public class AppSettings
 {
     public string Environment { get; set; } = "Development"; 
     public bool SendEmail { get; set; } = false;
+    public int NumberOfExecutions { get; set; } 
     public string Label { get; set; } = string.Empty;
     public string ProfileFolder { get; set; } = string.Empty;
     public string RecipientEmails { get; set; } = string.Empty;
