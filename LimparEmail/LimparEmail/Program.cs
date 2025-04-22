@@ -6,11 +6,9 @@ using Microsoft.Extensions.Configuration;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
 using OpenQA.Selenium.Support.UI;
-using System;
 using System.Globalization;
 using System.Net;
 using System.Net.Mail;
-using System.Security.Cryptography;
 
 #region [ROBOT EXECUTION]
 
@@ -625,8 +623,15 @@ void RemoveLabelsAndReturnPage()
 
         do
         {
-            
             var currentLabel = WaitForElement(By.XPath($"//*[@class='ahR'][{iterator}]/span[1]/div[1]")).Text;
+
+            //Se é a última label (só tem mais uma) e o texto não é igual a label desejado
+            //É pq caiu no erro do Externa, e lança uma execeção
+            if (i == numberOfExecutions &&
+                currentLabel != desiredLabel)
+            {
+                throw new Exception($"Só tem a label {currentLabel} disponível para remover e não é a mesmo que a label desejada {desiredLabel}");
+            }
 
             bool isLastLabel = i == numberOfLabels;
             bool isDesiredLabel = currentLabel == desiredLabel;
