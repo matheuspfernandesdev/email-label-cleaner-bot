@@ -6,9 +6,11 @@ using Microsoft.Extensions.Configuration;
 using OpenQA.Selenium;
 using OpenQA.Selenium.Chrome;
 using OpenQA.Selenium.Support.UI;
+using System;
 using System.Globalization;
 using System.Net;
 using System.Net.Mail;
+using System.Security.Cryptography;
 
 #region [ROBOT EXECUTION]
 
@@ -73,16 +75,19 @@ try
             LogHelper.SalvarLog($"Erro na execução {i} do robô: {ex.Message} - {ex.StackTrace} - " +
                                 $"{ex.InnerException}\r\n\r\n", nomeOutputLog);
 
-            if (ex is ValidationException || i == numberOfExecutions) 
+            if (ex is ValidationException || i == numberOfExecutions)
                 throw;
         }
     }
+
+    SaveEmailsToTheLogs();
 
     EnviarEmailSucesso();
 }
 catch (Exception ex)
 {
     LogHelper.SalvarLog($"O robô foi finalizado pelo seguite motivo: {ex.Message} - {ex.StackTrace} - {ex.InnerException}", nomeOutputLog);
+    SaveEmailsToTheLogs();
 
     Screenshot? screenshot = null;
 
@@ -286,14 +291,6 @@ int GetAvailableEmailCount()
 
 void ProcessEmail(int lineNumberToClick)
 {
-    //TODO: clicar no mesmo número sempre, pois as linhas vão diminuindo
-    //bool clicked = ClickUsingJS($"(//*[@class='yX xY '])[{lineNumberToClick}]");
-    //DelaySegundos(1);
-
-    //if (!clicked) throw new Exception("Não foi possível clicar com JS no botão que acessa o e-mail!");
-
-    //bool isAtEmailScreen = IsElementVisibleAndClickable(By.XPath("//*[@class='wYeeg']"));
-
     ClickInEmail(lineNumberToClick);
     PopulateCsv();
     RemoveLabelsAndReturnPage();
@@ -496,6 +493,35 @@ bool IsElementVisibleAndClickable(By by, int timeoutInSeconds = 2)
     }
 }
 
+IWebElement WaitForElement(By by, int tempo = 2)
+{
+    var cont = 0;
+    int espera = tempo * 1000;
+    Thread.Sleep(1000);
+
+    while (cont < espera)
+    {
+        try
+        {
+            var element = driver.FindElement(by);
+
+            if (element != null)
+            {
+                return element;
+            }
+        }
+        catch (NoSuchElementException)
+        {
+            // Se o elemento não for encontrado, continue a espera
+        }
+
+        cont += 500;
+        Thread.Sleep(1000);
+    }
+
+    return null;
+}
+
 /// <summary>
 /// Atualiza os valores da iteração atual das páginas.
 /// </summary>
@@ -562,8 +588,7 @@ bool ContinueExecution()
 
 void ClickInEmail(int lineNumberToClick)
 {
-    driver.FindElement(By.XPath($"(//*[@class='yX xY '])[{lineNumberToClick}]")).Click();
-
+    ClickWithWait(By.XPath($"(//*[@class='yX xY '])[{lineNumberToClick}]"));
     DelaySegundos(2);
     NumberOfEmailsAccessed++;
 }
@@ -580,11 +605,11 @@ void PopulateCsv()
 
     if (!obtainedEmails.Contains(emailSender))
     {
-        obtainedEmails.Add(emailSender);
-
         csvContent = GenerateCsvRow(foundDates.Last(), emailSender);
         LogHelper.SalvarCsv(csvContent, nomeOutputCsv);
     }
+
+    obtainedEmails.Add(emailSender);
 
     LogHelper.SalvarLog($"Populou o csv com o email do remetente.", nomeOutputLog);
 }
@@ -600,34 +625,29 @@ void RemoveLabelsAndReturnPage()
 
         do
         {
-            var currentLabel = driver.FindElement(By.XPath($"//*[@class='ahR'][{iterator}]/span[1]/div[1]")).Text;
-            bool isLast = i == numberOfLabels;
+            
+            var currentLabel = WaitForElement(By.XPath($"//*[@class='ahR'][{iterator}]/span[1]/div[1]")).Text;
 
-            //Só clica no X do marcador desejado, se for o ultimo
-            if (currentLabel == desiredLabel && isLast)
+            bool isLastLabel = i == numberOfLabels;
+            bool isDesiredLabel = currentLabel == desiredLabel;
+
+            if ((isLastLabel && isDesiredLabel) || (!isLastLabel && !isDesiredLabel))
             {
-                driver.FindElement(By.XPath($"(//*[@class='wYeeg'])[{iterator}]")).Click();
+                ClickWithWait(By.XPath($"(//*[@class='wYeeg'])[{iterator}]"));
                 clickHappened = true;
 
-                DelaySegundos(1);
-                driver.Navigate().Back();
-                DelaySegundos(3);
-            }
-            //Só clica no X dos outros marcadores, se for antes do ultimo
-            else if (currentLabel != desiredLabel && !isLast)
-            {
-                driver.FindElement(By.XPath($"(//*[@class='wYeeg'])[{iterator}]")).Click();
-
-                clickHappened = true;
-                DelaySegundos(2);
+                if (!isLastLabel) // Só espera se ainda houver mais marcadores
+                    DelaySegundos(1);
             }
 
             iterator++;
         } while (!clickHappened);
     }
 
+    driver.Navigate().Back();
     LogHelper.SalvarLog("Clicou em todos os marcadores e voltou uma página", nomeOutputLog);
-    WaitForPageToLoad(2);
+
+    WaitForPageToLoad(3);
 }
 
 string GetEmailSender()
@@ -641,9 +661,10 @@ string GetEmailSender()
 
     foreach (var (selector, extractEmail) in selectors)
     {
-        if (IsElementVisibleAndClickable(selector, 1))
+        if (IsElementVisibleAndClickable(selector, 2))
         {
             string email = extractEmail(driver.FindElement(selector));
+
             if (Util.IsValidEmail(email))
                 return email.Trim();
         }
@@ -678,19 +699,50 @@ bool ClickUsingJS(string xpath)
     return (bool)ExecuteJavaScript($"{script} return ClickByXPath(arguments[0]);", xpath);
 }
 
+void ClickWithWait(By by)
+{
+    if (IsElementVisibleAndClickable(by, 5))
+    {
+        driver.FindElement(by).Click();
+    }
+    else
+    {
+        throw new ValidationException($"Não foi possível realizar clique no elemento {by}");
+    }
+}
+
 object ExecuteJavaScript(string script, params object[] args)
 {
     IJavaScriptExecutor jsExecutor = driver;
     return jsExecutor.ExecuteScript(script, args);
 }
 
+void SaveEmailsToTheLogs()
+{
+    LogHelper.SalvarLog("\r\n" + string.Join(" | ", obtainedEmails) + "\r\n", nomeOutputLog);
+}
+
 #endregion
 
 #region [EMAIL METHODS]
 
-void EnviarEmail(string messageBody, string subject, MemoryStream print = null)
+void EnviarEmail(string subject, Exception ex = null, MemoryStream print = null)
 {
     using MailMessage message = new();
+
+    if (ex is ValidationException)
+    {
+        message.Body = $"<h2>Log da execução do robô: <br /><br />";
+    }
+    else if (ex is Exception)
+    {
+        message.Body = $"<h2>Erro encontrado na execução do robô: <br /><br />";
+    }
+    else
+    {
+        message.Body = $"<h2>Sucesso na execução do robô: <br /><br />";
+    }
+
     List<string> mailAddressTo = [.. appSettings.RecipientEmails.Split(";")];
 
     foreach (string mailAddress in mailAddressTo)
@@ -699,7 +751,6 @@ void EnviarEmail(string messageBody, string subject, MemoryStream print = null)
     }
 
     message.Subject = subject;
-    message.Body = messageBody;
     message.IsBodyHtml = true;
 
     SmtpClient smtp = new("smtp.gmail.com", 587)
@@ -709,6 +760,19 @@ void EnviarEmail(string messageBody, string subject, MemoryStream print = null)
         EnableSsl = true
     };
 
+    //LOG
+    if (ex is not null)
+    {
+        string caminhoLog = Path.Combine(AppContext.BaseDirectory, "Output", nomeOutputLog);
+
+        if (File.Exists(caminhoLog))
+        {
+            Attachment attachment = new(caminhoLog);
+            message.Attachments.Add(attachment);
+        }
+    }
+
+    //CSV
     if (!string.IsNullOrWhiteSpace(csvContent))
     {
         string caminhoCsv = Path.Combine(AppContext.BaseDirectory, "Output", nomeOutputCsv);
@@ -758,36 +822,23 @@ void EnviarEmail(string messageBody, string subject, MemoryStream print = null)
 
 void EnviarEmailSucesso()
 {
-    string msgBody = $"<h2>Sucesso na execução do robô de descadastro.";
-
     string subject = "EMAILS DESCADASTRADOS";
 
-    EnviarEmail(msgBody, subject);
+    EnviarEmail(subject, null, null);
 }
 
 void EnviarEmailErro(Exception ex, Screenshot? screenshot)
 {
-    string msgBody;
-
-    if (ex is ValidationException)
-    {
-        msgBody = $"<h2>Log da execução do robô: <br /><br />";
-    }
-    else
-    {
-        msgBody = $"<h2>Erro encontrado na execução do robô: <br /><br />";
-    }
-
     string subject = "ROBÔ DESCADASTRO";
 
     if (screenshot?.AsByteArray != null)
     {
         using MemoryStream print = new(screenshot.AsByteArray);
-        EnviarEmail(msgBody, subject, print);
+        EnviarEmail(subject, ex, print);
     }
     else
     {
-        EnviarEmail(msgBody, subject, null);
+        EnviarEmail(subject, ex, null);
     }
 }
 
