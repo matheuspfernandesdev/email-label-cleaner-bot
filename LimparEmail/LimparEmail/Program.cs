@@ -56,7 +56,7 @@ try
             GoToPage(urlBaseBetweenDates);
             if (IsEmptyPage()) break;
 
-            DelaySegundos(1);
+            DelaySegundos(2);
 
             do
             {
@@ -73,7 +73,7 @@ try
             LogHelper.SalvarLog($"Erro na execução {i} do robô: {ex.Message} - {ex.StackTrace} - " +
                                 $"{ex.InnerException}\r\n\r\n", nomeOutputLog);
 
-            if (ex is ValidationException || i == numberOfExecutions)
+            if (ex is EndOfExecutionException || i == numberOfExecutions)
                 throw;
         }
     }
@@ -236,7 +236,7 @@ int ReturnLineNumberOfDesiredDate()
         DateTime currentEmailDate;
 
         if (parseEmailDateToString is null)
-            throw new ValidationException($"Padrão de data não reconhecido: {spanDate}. Qtd linhas de span encontradas: {numberEmailElements}");
+            throw new EndOfExecutionException($"Padrão de data não reconhecido: {spanDate}. Qtd linhas de span encontradas: {numberEmailElements}");
         else
             currentEmailDate = parseEmailDateToString.Value;
 
@@ -251,7 +251,7 @@ int ReturnLineNumberOfDesiredDate()
         //Se chegar numa data do e-mail que é menor que data solicitada, é porque não tem como mais encontrar e-mail com essa data referente
         else if (!ContinueExecution())
         {
-            throw new ValidationException($"Foi feita a pesquisa entre as datas {foundDates.Max():dd/MM/yyyy} e {currentEmailDate:dd/MM/yyyy}. ");
+            throw new EndOfExecutionException($"Foi feita a pesquisa entre as datas {foundDates.Max():dd/MM/yyyy} e {currentEmailDate:dd/MM/yyyy}. ");
         }
     }
 
@@ -270,9 +270,9 @@ int GetAvailableEmailCount()
     catch (Exception)
     {
         if (obtainedEmails.Count == 0)
-            throw new ValidationException("Nenhum e-mail encontrado!");
+            throw new EndOfExecutionException("Nenhum e-mail encontrado!");
 
-        throw new ValidationException("Finalizou a execução!");
+        throw new EndOfExecutionException("Finalizou a execução!");
     }
 
     if (countEmails > 0)
@@ -281,10 +281,10 @@ int GetAvailableEmailCount()
     }
     else if (obtainedEmails.Count == 0)
     {
-        throw new ValidationException("Nenhum e-mail encontrado!");
+        throw new EndOfExecutionException("Nenhum e-mail encontrado!");
     }
 
-    throw new ValidationException("Finalizou a execução!");
+    throw new EndOfExecutionException("Finalizou a execução!");
 }
 
 void ProcessEmail(int lineNumberToClick)
@@ -367,7 +367,7 @@ void GoToNextEmailPage()
     int currentPage = GetPageNumber();
     GoToPageNumber(currentPage + 1);
 
-    if (IsEmptyPage()) throw new ValidationException("Chegou ao final das páginas possíveis");
+    if (IsEmptyPage()) throw new EndOfExecutionException("Chegou ao final das páginas possíveis");
 }
 
 void GoToPreviousEmailPage()
@@ -379,7 +379,7 @@ void GoToPreviousEmailPage()
         GoToPageNumber(currentPage - 1);
     }
 
-    if (IsEmptyPage()) throw new ValidationException("Chegou ao final das páginas possíveis");
+    if (IsEmptyPage()) throw new EndOfExecutionException("Chegou ao final das páginas possíveis");
 }
 
 int GetPageNumber()
@@ -601,6 +601,13 @@ void PopulateCsv()
                                          "Favor conferir seletores do robô.");
     }
 
+    //Solução criada para evitar ficar infinitamente no loop
+    if (obtainedEmails.Count >= 5 &&
+        obtainedEmails.TakeLast(5).All(item => item == emailSender))
+    {
+        throw new Exception("Caiu no loop. Será reiniciado a execução");
+    }
+
     if (!obtainedEmails.Contains(emailSender))
     {
         csvContent = GenerateCsvRow(foundDates.Last(), emailSender);
@@ -712,7 +719,7 @@ void ClickWithWait(By by)
     }
     else
     {
-        throw new ValidationException($"Não foi possível realizar clique no elemento {by}");
+        throw new Exception($"Não foi possível realizar clique no elemento {by}");
     }
 }
 
@@ -735,7 +742,7 @@ void EnviarEmail(string subject, Exception ex = null, MemoryStream print = null)
 {
     using MailMessage message = new();
 
-    if (ex is ValidationException)
+    if (ex is EndOfExecutionException)
     {
         message.Body = $"<h2>Log da execução do robô: <br /><br />";
     }
