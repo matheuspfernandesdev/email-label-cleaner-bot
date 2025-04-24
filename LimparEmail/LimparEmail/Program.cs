@@ -54,15 +54,18 @@ try
             LogHelper.SalvarLog($"Execução número {i}\r\n\r\n", nomeOutputLog);
 
             GoToPage(urlBaseBetweenDates);
-            if (IsEmptyPage()) break;
-
             DelaySegundos(2);
+
+            if (IsEmptyPage()) 
+                break;
+
+            ClickInEmail(1);
 
             do
             {
-                var lineNumberToClick = ReturnLineNumberOfDesiredDate();
-
-                ProcessEmail(lineNumberToClick);
+                WaitForPageToLoad();
+                ProcessEmail();
+                GoToNextEmail();
 
                 LogHelper.SalvarLog("\r\n\r\n", nomeOutputLog);
 
@@ -247,11 +250,10 @@ int ReturnLineNumberOfDesiredDate()
             LogHelper.SalvarLog($"Retornou numero da linha que deve ser clicável: {i}", nomeOutputLog);
             return i;
         }
-        //A lógica é: o e-mail sempre estar ordenado da maior data para a menor
-        //Se chegar numa data do e-mail que é menor que data solicitada, é porque não tem como mais encontrar e-mail com essa data referente
         else if (!ContinueExecution())
         {
-            throw new EndOfExecutionException($"Foi feita a pesquisa entre as datas {foundDates.Max():dd/MM/yyyy} e {currentEmailDate:dd/MM/yyyy}. ");
+            //throw new EndOfExecutionException($"Foi feita a pesquisa entre as datas {foundDates.Max():dd/MM/yyyy} e {currentEmailDate:dd/MM/yyyy}. ");
+            throw new EndOfExecutionException($"Foi feito a pesquisa na data {requestedDate:dd/MM/yyyy}. ");
         }
     }
 
@@ -287,11 +289,18 @@ int GetAvailableEmailCount()
     throw new EndOfExecutionException("Finalizou a execução!");
 }
 
-void ProcessEmail(int lineNumberToClick)
+void ProcessEmail()
 {
-    ClickInEmail(lineNumberToClick);
     PopulateCsv();
-    RemoveLabelsAndReturnPage();
+    RemoveLabels();
+}
+
+void GoToNextEmail()
+{
+    ClickWithWait(By.XPath("//*[@class='T-I J-J5-Ji adg T-I-awG T-I-ax7 T-I-Js-Gs L3']"));
+
+    NumberOfEmailsAccessed++;
+    LogHelper.SalvarLog("Avançou para o próximo e-mail", nomeOutputLog);
 }
 
 void InitializeChromeDriver()
@@ -556,8 +565,19 @@ int PageNumberToInteracte()
 
 bool IsEmptyPage()
 {
-    //Element that shows the text "Não existem conversas com este marcador."
-    return IsElementVisibleAndClickable(By.XPath("//*[@class='TD']/*[@class='TC']"), 2);
+    if (IsElementVisibleAndClickable(By.XPath("//*[@class='TD']/*[@class='TC']"), 2))
+    {
+         var teste = driver.FindElement(By.XPath("//*[@class='TD']/*[@class='TC']"))
+                           .Text
+                           .Replace("\"", "")  
+                           .Replace("\r\n", ""); 
+
+        var teste2 = teste.Contains("Nenhuma mensagem correspondeu");
+
+        return teste2;
+    }
+
+    return false;
 }
 
 void CloseExtraTabs()
@@ -581,7 +601,16 @@ void CloseExtraTabs()
 /// </summary>
 bool ContinueExecution()
 {
-    return !IsEmptyPage() || (obtainedEmails.Count != 0 && foundDates.Last() != requestedDate);
+    //REGRA ANTIGA
+    //return !IsEmptyPage() || (obtainedEmails.Count != 0 && foundDates.Last() != requestedDate);
+
+    //TODO: verificar se o marcador do botão de avançar está disabled
+    return !IsNextEmailButtonDisabled() && !IsEmptyPage();
+}
+
+bool IsNextEmailButtonDisabled()
+{
+    return IsElementVisibleAndClickable(By.XPath("//*[@class='T-I J-J5-Ji adg T-I-awG RwtgC T-I-ax7 T-I-Js-Gs T-I-JE L3']"));
 }
 
 void ClickInEmail(int lineNumberToClick)
@@ -610,7 +639,7 @@ void PopulateCsv()
 
     if (!obtainedEmails.Contains(emailSender))
     {
-        csvContent = GenerateCsvRow(foundDates.Last(), emailSender);
+        csvContent = GenerateCsvRow(requestedDate, emailSender);
         LogHelper.SalvarCsv(csvContent, nomeOutputCsv);
     }
 
@@ -619,7 +648,7 @@ void PopulateCsv()
     LogHelper.SalvarLog($"Populou o csv com o email do remetente.", nomeOutputLog);
 }
 
-void RemoveLabelsAndReturnPage()
+void RemoveLabels()
 {
     var numberOfLabels = driver.FindElements(By.XPath("//*[@class='ahR']")).Count;
 
@@ -656,7 +685,6 @@ void RemoveLabelsAndReturnPage()
         } while (!clickHappened);
     }
 
-    driver.Navigate().Back();
     LogHelper.SalvarLog("Clicou em todos os marcadores e voltou uma página", nomeOutputLog);
 
     WaitForPageToLoad(3);
@@ -748,11 +776,11 @@ void EnviarEmail(string subject, Exception ex = null, MemoryStream print = null)
     }
     else if (ex is Exception)
     {
-        message.Body = $"<h2>Erro encontrado na execução do robô: <br /><br />";
+        message.Body = $"<h2>Erro encontrado na execução do robô. Verifique o log em anexo! <br /><br />";
     }
     else
     {
-        message.Body = $"<h2>Sucesso na execução do robô: <br /><br />";
+        message.Body = $"<h2>Sucesso na execução do robô. <br /><br />";
     }
 
     List<string> mailAddressTo = [.. appSettings.RecipientEmails.Split(";")];
