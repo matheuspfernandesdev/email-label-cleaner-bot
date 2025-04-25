@@ -56,7 +56,7 @@ try
             GoToPage(urlBaseBetweenDates);
             DelaySegundos(2);
 
-            if (IsEmptyPage()) 
+            if (IsEmptyPage())
                 break;
 
             ClickInEmail(1);
@@ -297,10 +297,17 @@ void ProcessEmail()
 
 void GoToNextEmail()
 {
-    ClickWithWait(By.XPath("//*[@class='T-I J-J5-Ji adg T-I-awG T-I-ax7 T-I-Js-Gs L3']"));
+    if (!IsNextEmailButtonDisabled())
+    {
+        ClickAfterAwait(By.XPath("//*[@class='T-I J-J5-Ji adg T-I-awG T-I-ax7 T-I-Js-Gs L3']"));
 
-    NumberOfEmailsAccessed++;
-    LogHelper.SalvarLog("Avançou para o próximo e-mail", nomeOutputLog);
+        NumberOfEmailsAccessed++;
+        LogHelper.SalvarLog("Avançou para o próximo e-mail", nomeOutputLog);
+    }
+    else
+    {
+        throw new EndOfExecutionException("Chegou no último e-mail da listagem");
+    }
 }
 
 void InitializeChromeDriver()
@@ -500,13 +507,13 @@ bool IsElementVisibleAndClickable(By by, int timeoutInSeconds = 2)
     }
 }
 
-IWebElement WaitForElement(By by, int tempo = 2)
+IWebElement ReturnElementAfterWaiting(By by, int SegundosEspera = 2)
 {
     var cont = 0;
-    int espera = tempo * 1000;
-    Thread.Sleep(1000);
+    int espera = SegundosEspera * 1000;
+    Thread.Sleep(500);
 
-    while (cont < espera)
+    while (cont <= espera)
     {
         try
         {
@@ -522,7 +529,7 @@ IWebElement WaitForElement(By by, int tempo = 2)
             // Se o elemento não for encontrado, continue a espera
         }
 
-        cont += 500;
+        cont += 1000;
         Thread.Sleep(1000);
     }
 
@@ -565,16 +572,14 @@ int PageNumberToInteracte()
 
 bool IsEmptyPage()
 {
-    if (IsElementVisibleAndClickable(By.XPath("//*[@class='TD']/*[@class='TC']"), 2))
+    if (IsElementVisibleAndClickable(By.XPath("//*[@class='TD']/*[@class='TC']"), 1))
     {
-         var teste = driver.FindElement(By.XPath("//*[@class='TD']/*[@class='TC']"))
-                           .Text
-                           .Replace("\"", "")  
-                           .Replace("\r\n", ""); 
+        var emptyPageText = driver.FindElement(By.XPath("//*[@class='TD']/*[@class='TC']"))
+                          .Text
+                          .Replace("\"", "")
+                          .Replace("\r\n", "");
 
-        var teste2 = teste.Contains("Nenhuma mensagem correspondeu");
-
-        return teste2;
+        return emptyPageText.Contains("Nenhuma mensagem correspondeu");
     }
 
     return false;
@@ -604,19 +609,18 @@ bool ContinueExecution()
     //REGRA ANTIGA
     //return !IsEmptyPage() || (obtainedEmails.Count != 0 && foundDates.Last() != requestedDate);
 
-    //TODO: verificar se o marcador do botão de avançar está disabled
-    return !IsNextEmailButtonDisabled() && !IsEmptyPage();
+    return !IsEmptyPage();
 }
 
 bool IsNextEmailButtonDisabled()
 {
-    return IsElementVisibleAndClickable(By.XPath("//*[@class='T-I J-J5-Ji adg T-I-awG RwtgC T-I-ax7 T-I-Js-Gs T-I-JE L3']"));
+    return IsElementVisibleAndClickable(By.XPath("//*[@class='T-I J-J5-Ji adg T-I-awG RwtgC T-I-ax7 T-I-Js-Gs T-I-JE L3']"), 1);
 }
 
 void ClickInEmail(int lineNumberToClick)
 {
-    ClickWithWait(By.XPath($"(//*[@class='yX xY '])[{lineNumberToClick}]"));
-    DelaySegundos(2);
+    ClickAfterAwait(By.XPath($"(//*[@class='yX xY '])[{lineNumberToClick}]"));
+    DelaySegundos(1);
     NumberOfEmailsAccessed++;
 }
 
@@ -659,7 +663,7 @@ void RemoveLabels()
 
         do
         {
-            var currentLabel = WaitForElement(By.XPath($"//*[@class='ahR'][{iterator}]/span[1]/div[1]")).Text;
+            var currentLabel = ReturnElementAfterWaiting(By.XPath($"//*[@class='ahR'][{iterator}]/span[1]/div[1]")).Text;
 
             //Se é a última label (só tem mais uma) e o texto não é igual a label desejado
             //É pq caiu no erro do Externa, e lança uma execeção
@@ -674,11 +678,8 @@ void RemoveLabels()
 
             if ((isLastLabel && isDesiredLabel) || (!isLastLabel && !isDesiredLabel))
             {
-                ClickWithWait(By.XPath($"(//*[@class='wYeeg'])[{iterator}]"));
+                ClickAfterAwait(By.XPath($"(//*[@class='wYeeg'])[{iterator}]"));
                 clickHappened = true;
-
-                if (!isLastLabel) // Só espera se ainda houver mais marcadores
-                    DelaySegundos(1);
             }
 
             iterator++;
@@ -739,7 +740,7 @@ bool ClickUsingJS(string xpath)
     return (bool)ExecuteJavaScript($"{script} return ClickByXPath(arguments[0]);", xpath);
 }
 
-void ClickWithWait(By by)
+void ClickAfterAwait(By by)
 {
     if (IsElementVisibleAndClickable(by, 5))
     {
@@ -759,7 +760,8 @@ object ExecuteJavaScript(string script, params object[] args)
 
 void SaveEmailsToTheLogs()
 {
-    LogHelper.SalvarLog("\r\n" + string.Join(" | ", obtainedEmails) + "\r\n", nomeOutputLog);
+    LogHelper.SalvarLog($"Quantidade de e-mails acessados: {obtainedEmails.Count}", nomeOutputLog);
+    LogHelper.SalvarLog(string.Join(" | ", obtainedEmails) + "\r\n", nomeOutputLog);
 }
 
 #endregion
@@ -833,10 +835,10 @@ void EnviarEmail(string subject, Exception ex = null, MemoryStream print = null)
             message.Attachments.Add(new Attachment(print, "screenshot.png", "image/png"));
         }
 
-        message.Body += $"<br /><br />{obtainedEmails.Count} emails foram descadastrados de {NumberOfEmailsAccessed} emails acessados, " +
-                        $"já evitando repetição de emails.<br />" +
-                        $"Segue em anexo arquivo .csv com emails descadastrados referente ao dia {requestedDate:dd/MM/yyyy}."
-                        ;
+        message.Body += $"Segue em anexo arquivo CSV com emails descadastrados referente ao dia {requestedDate:dd/MM/yyyy}. <br /><br />" +
+                        $"{obtainedEmails.Count} emails acessados. <br />" +
+                        $"No arquivo CSV estão somente e-mails não repetidos. <br />" +
+                        $"Caso queira ver todos os e-mails visualizados, acesse o final do arquivo de log. <br /><br />";
     }
     else
     {
@@ -862,14 +864,14 @@ void EnviarEmail(string subject, Exception ex = null, MemoryStream print = null)
 
 void EnviarEmailSucesso()
 {
-    string subject = "EMAILS DESCADASTRADOS";
+    string subject = $"EMAILS DESCADASTRADOS - {requestedDate:dd/MM/yyyy}";
 
     EnviarEmail(subject, null, null);
 }
 
 void EnviarEmailErro(Exception ex, Screenshot? screenshot)
 {
-    string subject = "ROBÔ DESCADASTRO";
+    string subject = $"ROBÔ DESCADASTRO - {requestedDate:dd/MM/yyyy}";
 
     if (screenshot?.AsByteArray != null)
     {
