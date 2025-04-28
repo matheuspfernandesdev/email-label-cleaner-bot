@@ -9,6 +9,7 @@ using OpenQA.Selenium.Support.UI;
 using System.Globalization;
 using System.Net;
 using System.Net.Mail;
+using System.Net.Mime;
 
 #region [ROBOT EXECUTION]
 
@@ -54,12 +55,12 @@ try
             LogHelper.SalvarLog($"Execução número {i}\r\n\r\n", nomeOutputLog);
 
             GoToPage(urlBaseBetweenDates);
-            DelaySegundos(2);
+            DelaySegundos(1);
 
             if (IsEmptyPage())
-                break;
+                throw new EndOfExecutionException("Não foi encontrado nenhuma e-mail para essa busca");
 
-            ClickInEmail(1);
+            ClickInEmail();
 
             do
             {
@@ -80,10 +81,6 @@ try
                 throw;
         }
     }
-
-    SaveEmailsToTheLogs();
-
-    EnviarEmailSucesso();
 }
 catch (Exception ex)
 {
@@ -103,9 +100,8 @@ catch (Exception ex)
 finally
 {
     KillDriver(driver);
-    Environment.Exit(0);
-
     LogHelper.SalvarLog("Finalizou a execução do robô", nomeOutputLog);
+    Environment.Exit(0);
 }
 
 #endregion
@@ -335,6 +331,8 @@ void InitializeChromeDriver()
     options.AddArgument("--start-maximized"); // Inicia o navegador maximizado para melhor visualização.
     options.AddExcludedArgument("enable-automation"); // Remove a flag de automação
     options.AddAdditionalOption("useAutomationExtension", false); // Desativa extensões de automação
+    options.AddArgument("--headless=new"); // usar "--headless=new" com versões mais recentes do Chrome
+    //options.AddArgument("--window-size=1920,1080");
 
     options.AddArgument("--disable-popup-blocking"); // Impede o bloqueio de pop-ups, útil para testes que precisam interagir com eles.
     //options.AddArgument("--ignore-certificate-errors"); // Ignora erros de certificados SSL, útil para ambientes de teste.
@@ -427,7 +425,7 @@ string ReturnUrlPage()
 void GoToPage(string desiredPage)
 {
     driver.Navigate().GoToUrl(desiredPage);
-    WaitForPageToLoad(4);
+    WaitForPageToLoad(5);
 
     LogHelper.SalvarLog($"Acessou a página {desiredPage}", nomeOutputLog);
 }
@@ -487,7 +485,7 @@ void WaitUntilDisplayedAndEnabled(By by)
 /// <param name="by">Localizador do elemento (By.Id, By.XPath, etc.)</param>
 /// <param name="timeoutInSeconds">Tempo máximo de espera (opcional)</param>
 /// <returns>True se o elemento for visível e clicável, False caso contrário.</returns>
-bool IsElementVisibleAndClickable(By by, int timeoutInSeconds = 2)
+bool IsElementVisibleAndClickable(By by, int timeoutInSeconds = 5)
 {
     try
     {
@@ -507,11 +505,11 @@ bool IsElementVisibleAndClickable(By by, int timeoutInSeconds = 2)
     }
 }
 
-IWebElement ReturnElementAfterWaiting(By by, int SegundosEspera = 2)
+IWebElement? ReturnElementAfterWaiting(By by, int SegundosEspera = 5)
 {
     var cont = 0;
     int espera = SegundosEspera * 1000;
-    Thread.Sleep(500);
+    Thread.Sleep(1000);
 
     while (cont <= espera)
     {
@@ -572,7 +570,7 @@ int PageNumberToInteracte()
 
 bool IsEmptyPage()
 {
-    if (IsElementVisibleAndClickable(By.XPath("//*[@class='TD']/*[@class='TC']"), 1))
+    if (IsElementVisibleAndClickable(By.XPath("//*[@class='TD']/*[@class='TC']"), 2))
     {
         var emptyPageText = driver.FindElement(By.XPath("//*[@class='TD']/*[@class='TC']"))
                           .Text
@@ -606,40 +604,26 @@ void CloseExtraTabs()
 /// </summary>
 bool ContinueExecution()
 {
-    //REGRA ANTIGA
-    //return !IsEmptyPage() || (obtainedEmails.Count != 0 && foundDates.Last() != requestedDate);
-
     return !IsEmptyPage();
 }
 
 bool IsNextEmailButtonDisabled()
 {
-    return IsElementVisibleAndClickable(By.XPath("//*[@class='T-I J-J5-Ji adg T-I-awG RwtgC T-I-ax7 T-I-Js-Gs T-I-JE L3']"), 1);
+    return IsElementVisibleAndClickable(By.XPath("//*[@class='T-I J-J5-Ji adg T-I-awG RwtgC T-I-ax7 T-I-Js-Gs T-I-JE L3']"), 2);
 }
 
-void ClickInEmail(int lineNumberToClick)
+void ClickInEmail()
 {
-    ClickAfterAwait(By.XPath($"(//*[@class='yX xY '])[{lineNumberToClick}]"));
+    ClickAfterAwait(By.XPath($"(//*[@class='yX xY '])[1]"));
     DelaySegundos(1);
     NumberOfEmailsAccessed++;
+
+    LogHelper.SalvarLog("Clicou no primeiro email para inicar execução", nomeOutputLog);
 }
 
 void PopulateCsv()
 {
     string emailSender = GetEmailSender();
-
-    if (string.IsNullOrWhiteSpace(emailSender))
-    {
-        throw new NoSuchElementException("Não foi encontrado email remetente. " +
-                                         "Favor conferir seletores do robô.");
-    }
-
-    //Solução criada para evitar ficar infinitamente no loop
-    if (obtainedEmails.Count >= 5 &&
-        obtainedEmails.TakeLast(5).All(item => item == emailSender))
-    {
-        throw new Exception("Caiu no loop. Será reiniciado a execução");
-    }
 
     if (!obtainedEmails.Contains(emailSender))
     {
@@ -654,7 +638,18 @@ void PopulateCsv()
 
 void RemoveLabels()
 {
-    var numberOfLabels = driver.FindElements(By.XPath("//*[@class='ahR']")).Count;
+    int numberOfLabels;
+
+    if (IsElementVisibleAndClickable(By.XPath("//*[@class='ahR']")))
+    {
+        numberOfLabels = driver.FindElements(By.XPath("//*[@class='ahR']")).Count;
+    }
+    else
+    {
+        throw new Exception("Não foi encontrado nenhum marcador para ser removido");
+    }
+
+    LogHelper.SalvarLog($"Visualizou {numberOfLabels} marcadores para remover", nomeOutputLog);
 
     for (int i = 1; i <= numberOfLabels; i++)
     {
@@ -664,14 +659,6 @@ void RemoveLabels()
         do
         {
             var currentLabel = ReturnElementAfterWaiting(By.XPath($"//*[@class='ahR'][{iterator}]/span[1]/div[1]")).Text;
-
-            //Se é a última label (só tem mais uma) e o texto não é igual a label desejado
-            //É pq caiu no erro do Externa, e lança uma execeção
-            if (i == numberOfExecutions &&
-                currentLabel != desiredLabel)
-            {
-                throw new Exception($"Só tem a label {currentLabel} disponível para remover e não é a mesmo que a label desejada {desiredLabel}");
-            }
 
             bool isLastLabel = i == numberOfLabels;
             bool isDesiredLabel = currentLabel == desiredLabel;
@@ -686,9 +673,7 @@ void RemoveLabels()
         } while (!clickHappened);
     }
 
-    LogHelper.SalvarLog("Clicou em todos os marcadores e voltou uma página", nomeOutputLog);
-
-    WaitForPageToLoad(3);
+    LogHelper.SalvarLog("Removeu todos os marcadores.", nomeOutputLog);
 }
 
 string GetEmailSender()
@@ -711,7 +696,8 @@ string GetEmailSender()
         }
     }
 
-    return string.Empty;
+    throw new NoSuchElementException("Não foi encontrado email remetente. " +
+                                     "Favor conferir seletores do robô.");
 }
 
 /// <summary>
@@ -761,7 +747,9 @@ object ExecuteJavaScript(string script, params object[] args)
 void SaveEmailsToTheLogs()
 {
     LogHelper.SalvarLog($"Quantidade de e-mails acessados: {obtainedEmails.Count}", nomeOutputLog);
-    LogHelper.SalvarLog(string.Join(" | ", obtainedEmails) + "\r\n", nomeOutputLog);
+
+    if (obtainedEmails.Count != 0)
+        LogHelper.SalvarLog(string.Join(" | ", obtainedEmails) + "\r\n", nomeOutputLog);
 }
 
 #endregion
@@ -809,7 +797,9 @@ void EnviarEmail(string subject, Exception ex = null, MemoryStream print = null)
 
         if (File.Exists(caminhoLog))
         {
-            Attachment attachment = new(caminhoLog);
+            byte[] bytes = File.ReadAllBytes(caminhoLog);
+            MemoryStream ms = new(bytes);
+            Attachment attachment = new(ms, nomeOutputLog, MediaTypeNames.Text.Plain);
             message.Attachments.Add(attachment);
         }
     }
@@ -851,6 +841,16 @@ void EnviarEmail(string subject, Exception ex = null, MemoryStream print = null)
     {
         smtp.Send(message);
     }
+    catch (Exception e)
+    {
+        var errorEmail = $"Ocorreu um erro ao enviar o e-mail: {e}";
+        LogHelper.SalvarLog(errorEmail, nomeOutputLog);
+
+        Console.Clear();
+        Console.WriteLine(errorEmail);
+        Console.WriteLine("Os arquivos estão salvos na pasta Output. Acesse para verificar o log e o CSV. Pressione algum botão do teclado para finalizar!");
+        Console.ReadKey();
+    }
     finally
     {
         foreach (Attachment attach in message.Attachments)
@@ -860,13 +860,6 @@ void EnviarEmail(string subject, Exception ex = null, MemoryStream print = null)
     }
 
     LogHelper.SalvarLog("Enviou e-mail", nomeOutputLog);
-}
-
-void EnviarEmailSucesso()
-{
-    string subject = $"EMAILS DESCADASTRADOS - {requestedDate:dd/MM/yyyy}";
-
-    EnviarEmail(subject, null, null);
 }
 
 void EnviarEmailErro(Exception ex, Screenshot? screenshot)

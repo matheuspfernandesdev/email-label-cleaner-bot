@@ -1,23 +1,23 @@
-﻿using System.Text;
+﻿using OpenQA.Selenium.Support.UI;
+using System.Text;
 
 namespace LimparEmail.Utility;
 
 public static class LogHelper
 {
     private static readonly string OutputDir = Path.Combine(AppContext.BaseDirectory, "Output");
+    private static readonly object _lock = new object();
 
     public static void SalvarLog(string mensagem, string nomeArquivo)
     {
-        CriarDiretorioSeNaoExistir();
+        lock (_lock)
+        {
+            CriarDiretorioSeNaoExistir();
+            string caminhoArquivo = Path.Combine(OutputDir, nomeArquivo);
 
-        string caminhoArquivo = Path.Combine(OutputDir, nomeArquivo);
-
-        if (!File.Exists(caminhoArquivo))
-            File.Create(caminhoArquivo).Dispose();
-        
-        string linha = $"[{DateTime.Now:dd-MM-yyyy HH:mm:ss}] - {mensagem}{Environment.NewLine}";
-
-        File.AppendAllText(caminhoArquivo, linha);
+            string linha = $"[{DateTime.Now:dd-MM-yyyy HH:mm:ss}] - {mensagem}{Environment.NewLine}";
+            File.AppendAllText(caminhoArquivo, linha);
+        }
     }
 
     public static void SalvarCsv(string conteudoLinhaCsv, string nomeArquivo)
