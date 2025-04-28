@@ -1,5 +1,4 @@
-﻿using OpenQA.Selenium.Support.UI;
-using System.Text;
+﻿using System.Text;
 
 namespace LimparEmail.Utility;
 
@@ -10,6 +9,8 @@ public static class LogHelper
 
     public static void SalvarLog(string mensagem, string nomeArquivo)
     {
+        //lock criado pois estava ocorrendo um erro de concorrencia no arquivo, como se estivesse utilizado em outro processo
+        //o erro de fato era outro, porem deixei o lock aqui por via das dúvidas
         lock (_lock)
         {
             CriarDiretorioSeNaoExistir();

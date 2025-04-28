@@ -331,7 +331,7 @@ void InitializeChromeDriver()
     options.AddArgument("--start-maximized"); // Inicia o navegador maximizado para melhor visualização.
     options.AddExcludedArgument("enable-automation"); // Remove a flag de automação
     options.AddAdditionalOption("useAutomationExtension", false); // Desativa extensões de automação
-    options.AddArgument("--headless=new"); // usar "--headless=new" com versões mais recentes do Chrome
+    //options.AddArgument("--headless=new"); // usar "--headless=new" com versões mais recentes do Chrome
     //options.AddArgument("--window-size=1920,1080");
 
     options.AddArgument("--disable-popup-blocking"); // Impede o bloqueio de pop-ups, útil para testes que precisam interagir com eles.
