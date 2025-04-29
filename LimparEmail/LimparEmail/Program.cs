@@ -295,7 +295,7 @@ void GoToNextEmail()
 {
     if (!IsNextEmailButtonDisabled())
     {
-        ClickAfterAwait(By.XPath("//*[@class='T-I J-J5-Ji adg T-I-awG T-I-ax7 T-I-Js-Gs L3']"));
+        ClickAfterDefaultWait(By.XPath("//*[@class='T-I J-J5-Ji adg T-I-awG T-I-ax7 T-I-Js-Gs L3']"));
 
         NumberOfEmailsAccessed++;
         LogHelper.SalvarLog("Avançou para o próximo e-mail", nomeOutputLog);
@@ -534,6 +534,24 @@ IWebElement? ReturnElementAfterWaiting(By by, int SegundosEspera = 5)
     return null;
 }
 
+IWebElement ReturnElementAfterDefaultWait(By by, int timeoutSegundos = 10, int pollingMs = 500)
+{
+    DefaultWait<IWebDriver> wait = new(driver)
+    {
+        Timeout = TimeSpan.FromSeconds(timeoutSegundos),
+        PollingInterval = TimeSpan.FromMilliseconds(pollingMs),
+        Message = $"Elemento com seletor {by} não foi encontrado após {timeoutSegundos} segundos."
+    };
+
+    wait.IgnoreExceptionTypes(typeof(NoSuchElementException), typeof(StaleElementReferenceException));
+
+    return wait.Until(drv =>
+    {
+        var element = drv.FindElement(by);
+        return (element.Displayed && element.Enabled) ? element : null;
+    });
+}
+
 /// <summary>
 /// Atualiza os valores da iteração atual das páginas.
 /// </summary>
@@ -614,7 +632,7 @@ bool IsNextEmailButtonDisabled()
 
 void ClickInEmail()
 {
-    ClickAfterAwait(By.XPath($"(//*[@class='yX xY '])[1]"));
+    ClickAfterDefaultWait(By.XPath($"(//*[@class='yX xY '])[1]"));
     DelaySegundos(1);
     NumberOfEmailsAccessed++;
 
@@ -658,14 +676,17 @@ void RemoveLabels()
 
         do
         {
-            var currentLabel = ReturnElementAfterWaiting(By.XPath($"//*[@class='ahR'][{iterator}]/span[1]/div[1]")).Text;
+            var currentLabel = ReturnElementAfterDefaultWait(By.XPath($"//*[@class='ahR'][{iterator}]/span[1]/div[1]")).Text;
 
             bool isLastLabel = i == numberOfLabels;
             bool isDesiredLabel = currentLabel == desiredLabel;
 
             if ((isLastLabel && isDesiredLabel) || (!isLastLabel && !isDesiredLabel))
             {
-                ClickAfterAwait(By.XPath($"(//*[@class='wYeeg'])[{iterator}]"));
+                Thread.Sleep(250);
+                ClickAfterDefaultWait(By.XPath($"(//*[@class='wYeeg'])[{iterator}]"));
+
+                LogHelper.SalvarLog($"Removeu o marcador {currentLabel}", nomeOutputLog);
                 clickHappened = true;
             }
 
@@ -736,6 +757,12 @@ void ClickAfterAwait(By by)
     {
         throw new Exception($"Não foi possível realizar clique no elemento {by}");
     }
+}
+
+void ClickAfterDefaultWait(By by)
+{
+    var element = ReturnElementAfterDefaultWait(by);
+    element.Click();
 }
 
 object ExecuteJavaScript(string script, params object[] args)
