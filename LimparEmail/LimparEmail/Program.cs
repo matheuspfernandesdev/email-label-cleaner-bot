@@ -41,12 +41,16 @@ IConfiguration config;
 
 try
 {
-    SettingAppConfig();
     using var sleepBlocker = new SystemSleepBlocker();
 
+    SettingAppConfig();
     GetDesiredDate();
+
     InitializeChromeDriver();
     CloseExtraTabs();
+
+    //GoToPage(urlBaseBetweenDates);
+    //VerifyLogin();
 
     for (int i = 1; i <= numberOfExecutions; i++)
     {
@@ -210,6 +214,29 @@ void DelaySegundos(int segundos)
 
 #region [SELENIUM METHODS]
 
+void VerifyLogin()
+{
+    LogHelper.SalvarLog($"Iniciou verificação do login\r\n", nomeOutputLog);
+
+    if (ReturnQuantityEmailsListed() == 0)
+    {
+        for (int j = 1; j <= 10; j++)
+        {
+            //Espera 10 seg antes de verificar novamente se foi feito o login
+            Thread.Sleep(10000);
+
+            if (ReturnQuantityEmailsListed() > 0)
+            {
+                LogHelper.SalvarLog($"Finalizou verificação do login\r\n", nomeOutputLog);
+
+                break;
+            }
+
+            LogHelper.SalvarLog($"Verificou login tentativa {j} de 10", nomeOutputLog);
+        }
+    }
+}
+
 int ReturnLineNumberOfDesiredDate()
 {
     //int startLine = PageNumberToInteracte();
@@ -258,20 +285,7 @@ int ReturnLineNumberOfDesiredDate()
 
 int GetAvailableEmailCount()
 {
-    string emailsXPath = "//td[contains(@class, 'xW') and contains(@class, 'xY')]/span/span";
-    int countEmails;
-
-    try
-    {
-        countEmails = driver.FindElements(By.XPath(emailsXPath)).Count;
-    }
-    catch (Exception)
-    {
-        if (obtainedEmails.Count == 0)
-            throw new EndOfExecutionException("Nenhum e-mail encontrado!");
-
-        throw new EndOfExecutionException("Finalizou a execução!");
-    }
+    int countEmails = ReturnQuantityEmailsListed();
 
     if (countEmails > 0)
     {
@@ -283,6 +297,21 @@ int GetAvailableEmailCount()
     }
 
     throw new EndOfExecutionException("Finalizou a execução!");
+}
+
+int ReturnQuantityEmailsListed()
+{
+    string emailsXPath = "//td[contains(@class, 'xW') and contains(@class, 'xY')]/span/span";
+
+    try
+    {
+        var teste = driver.FindElements(By.XPath(emailsXPath)).Count;
+        return teste;
+    }
+    catch (Exception)
+    {
+        return 0;
+    }
 }
 
 void ProcessEmail()
@@ -323,8 +352,9 @@ void InitializeChromeDriver()
     options.AddArgument(userDataDirOption);
 
     //chrome://version/ -> Use para obter qual profile informar, na opção Caminho do perfil
+    //string profileDirectory = "Profile 2";
     string profileDirectory = appSettings.ProfileFolder;
-    options.AddArgument(profileDirectory);
+    options.AddArgument("profile-directory=" + profileDirectory);
 
     options.AddArgument("--disable-gpu"); // Desativa a aceleração de hardware via GPU, útil para evitar problemas gráficos.
     options.AddArgument("--disable-extensions"); // Desativa extensões do navegador, melhorando desempenho e estabilidade.
@@ -345,6 +375,65 @@ void InitializeChromeDriver()
 
     driver = new ChromeDriver(options);
     LogHelper.SalvarLog("Inicializou o Chrome", nomeOutputLog);
+}
+
+void InitializeChromeDriverNew()
+{
+    string profileFolder = Path.Combine(AppContext.BaseDirectory, "Profiles");
+
+    if (!Directory.Exists(profileFolder))
+        Directory.CreateDirectory(profileFolder);
+
+    string originalProfile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+                                          $@"AppData\Local\Google\Chrome\User Data\{appSettings.ProfileFolder}");
+
+    string profileClonePath = profileFolder + "\\" + appSettings.ProfileFolder;
+
+    if (!Directory.Exists(profileClonePath))
+        DirectoryCopy(originalProfile, profileClonePath, true);
+
+    ChromeOptions options = new();
+    options.BinaryLocation = @"C:\Program Files\Google\Chrome\Application\chrome.exe";
+    options.AddArgument($"--user-data-dir={profileClonePath}");
+    options.AddArgument("--disable-gpu");
+    options.AddArgument("--disable-extensions");
+    options.AddArgument("--start-maximized");
+    options.AddExcludedArgument("enable-automation");
+    options.AddAdditionalOption("useAutomationExtension", false);
+    options.AddArgument("--disable-popup-blocking");
+
+    var service = ChromeDriverService.CreateDefaultService();
+    service.EnableVerboseLogging = true;
+    service.LogPath = Path.Combine(AppContext.BaseDirectory, "Output") + $"\\chromedriver_{requestedDate:dd-MM-yyyy_HH-mm-ss}.log";
+
+    driver = new ChromeDriver(service, options);
+    LogHelper.SalvarLog("Inicializou o Chrome com perfil clonado", nomeOutputLog);
+}
+
+// Utilitário para copiar diretórios recursivamente
+void DirectoryCopy(string sourceDirName, string destDirName, bool copySubDirs)
+{
+    DirectoryInfo dir = new(sourceDirName);
+    if (!dir.Exists)
+        throw new DirectoryNotFoundException("Diretório de origem não encontrado: " + sourceDirName);
+
+    DirectoryInfo[] dirs = dir.GetDirectories();
+    Directory.CreateDirectory(destDirName);
+
+    foreach (FileInfo file in dir.GetFiles())
+    {
+        string temppath = Path.Combine(destDirName, file.Name);
+        file.CopyTo(temppath, true);
+    }
+
+    if (copySubDirs)
+    {
+        foreach (DirectoryInfo subdir in dirs)
+        {
+            string temppath = Path.Combine(destDirName, subdir.Name);
+            DirectoryCopy(subdir.FullName, temppath, copySubDirs);
+        }
+    }
 }
 
 void KillDriver(IWebDriver? driver)
