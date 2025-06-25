@@ -56,6 +56,9 @@ try
     {
         try
         {
+            BetweenDates betweenDates = new(requestedDate, requestedDate.AddDays(1));
+            urlBaseBetweenDates = betweenDates.FormatUrl(urlBaseBetweenDates, appSettings.Label);
+
             LogHelper.SalvarLog($"Execução número {i}\r\n\r\n", nomeOutputLog);
 
             GoToPage(urlBaseBetweenDates);
@@ -135,40 +138,77 @@ void SettingAppConfig()
 
 void GetDesiredDate()
 {
-    string? inputDate;
-    DateTime validDate;
+    string? startDateEntered;
+    string? endDateEntered;
+    DateTime validStartDate;
+    DateTime validEndDate;
     bool isValid;
 
     do
     {
-        Console.WriteLine($"OBS: O gmail precisa estar logado no perfil do Chrome antes de rodar o robô\n");
-        Console.Write($"MARCADOR QUE O ROBÔ IRÁ RODAR: {desiredLabel}\n\n");
+        Console.WriteLine($"OBS 1: O gmail precisa estar logado no perfil do Chrome antes de rodar o robô\n");
+        Console.Write($"OBS 2: MARCADOR QUE O ROBÔ IRÁ RODAR: {desiredLabel}\n\n");
+        Console.Write($"OBS 3: Informe um intervalo entre datas de 10 dias, no máximo\n\n");
+        Console.Write($"OBS 4: Nome do CSV terá a data inicial, porém terá o e-mail de todos as datas solicitadas\n\n");
 
-        Console.WriteLine("Digite uma data no formato dd/MM/yyyy: ");
-        inputDate = Console.ReadLine();
+        //Data inicial
+        Console.WriteLine("Digite a data inicial no formato dd/MM/yyyy: ");
+        startDateEntered = Console.ReadLine();
 
-        isValid = DateTime.TryParseExact(inputDate, "dd/MM/yyyy",
-            CultureInfo.InvariantCulture, DateTimeStyles.None, out validDate) && validDate <= DateTime.Now;
+        isValid = DateTime.TryParseExact(startDateEntered, "dd/MM/yyyy",
+            CultureInfo.InvariantCulture, DateTimeStyles.None, out validStartDate) && validStartDate <= DateTime.Now;
 
         if (!isValid)
         {
             Console.WriteLine("Formato inválido! Tente novamente.");
             DelaySegundos(1);
             Console.WriteLine("");
+
+            continue;
+        }
+
+        //Data final
+        Console.WriteLine("Digite a data final no formato dd/MM/yyyy: ");
+        endDateEntered = Console.ReadLine();
+
+        isValid = DateTime.TryParseExact(endDateEntered, "dd/MM/yyyy",
+            CultureInfo.InvariantCulture, DateTimeStyles.None, out validEndDate) && validEndDate <= DateTime.Now;
+
+        //Validações
+        if (!isValid)
+        {
+            Console.WriteLine("Formato inválido! Informa as duas datas novamente.");
+            DelaySegundos(1);
+            Console.WriteLine("");
+
+            continue;
+        }
+        else if ((validEndDate - validStartDate).Days > 10)
+        {
+            Console.WriteLine("Intervalo maior que 10 dias! Informa as duas datas novamente.");
+            DelaySegundos(1);
+            Console.WriteLine("");
+
+            continue;
+        }
+        else if (validEndDate < validStartDate)
+        {
+            Console.WriteLine("Data Inicial não pode ser posterior a Data Final! Informa as duas datas novamente.");
+            DelaySegundos(1);
+            Console.WriteLine("");
+
+            continue;
         }
         else
         {
-            Console.WriteLine("Data válida! Abrindo o navegador...\n");
+            Console.WriteLine("Datas válidas! Abrindo o navegador...\n");
             DelaySegundos(1);
         }
 
         Console.Clear();
     } while (!isValid);
 
-    BetweenDates betweenDates = new(validDate, validDate.AddDays(1));
-    urlBaseBetweenDates = betweenDates.FormatUrl(urlBaseBetweenDates, appSettings.Label);
-
-    requestedDate = validDate.Date + DateTime.Now.TimeOfDay;
+    requestedDate = validStartDate.Date + DateTime.Now.TimeOfDay;
 
     nomeOutputCsv = $"descadastro_{requestedDate:dd-MM-yyyy_HH-mm-ss}.csv";
     nomeOutputLog = $"descadastro_{requestedDate:dd-MM-yyyy_HH-mm-ss}.txt";
