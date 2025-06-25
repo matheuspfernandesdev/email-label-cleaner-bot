@@ -34,7 +34,8 @@ const string VistoPor = "Ana Gabriela";
 const string OrigemClone = "Brius";
 string csvContent = string.Empty;
 
-DateTime requestedDate = new();
+DateTime requestedStartDate = new();
+DateTime requestedEndDate = new();
 DateTime robotStarted = new();
 ChromeDriver? driver = null;
 IConfiguration config;
@@ -49,16 +50,10 @@ try
     InitializeChromeDriver();
     CloseExtraTabs();
 
-    //GoToPage(urlBaseBetweenDates);
-    //VerifyLogin();
-
     for (int i = 1; i <= numberOfExecutions; i++)
     {
         try
         {
-            BetweenDates betweenDates = new(requestedDate, requestedDate.AddDays(1));
-            urlBaseBetweenDates = betweenDates.FormatUrl(urlBaseBetweenDates, appSettings.Label);
-
             LogHelper.SalvarLog($"Execução número {i}\r\n\r\n", nomeOutputLog);
 
             GoToPage(urlBaseBetweenDates);
@@ -140,25 +135,27 @@ void GetDesiredDate()
 {
     string? startDateEntered;
     string? endDateEntered;
-    DateTime validStartDate;
-    DateTime validEndDate;
-    bool isValid;
+    DateTime validStartDate = new();
+    DateTime validEndDate = new();
+    bool isValidCondition;
 
     do
     {
-        Console.WriteLine($"OBS 1: O gmail precisa estar logado no perfil do Chrome antes de rodar o robô\n");
-        Console.Write($"OBS 2: MARCADOR QUE O ROBÔ IRÁ RODAR: {desiredLabel}\n\n");
-        Console.Write($"OBS 3: Informe um intervalo entre datas de 10 dias, no máximo\n\n");
-        Console.Write($"OBS 4: Nome do CSV terá a data inicial, porém terá o e-mail de todos as datas solicitadas\n\n");
+        Console.Clear();    
+
+        Console.WriteLine($"OBS 1: O gmail precisa estar logado no perfil do Chrome antes de rodar o robô");
+        Console.Write($"OBS 2: MARCADOR QUE O ROBÔ IRÁ RODAR: {desiredLabel}\n");
+        Console.Write($"OBS 3: Informe um intervalo entre datas de 10 dias, no máximo\n");
+        Console.Write($"OBS 4: Nome do CSV terá a data inicial, porém terá o e-mail de todos as datas solicitadas\n\n\n");
 
         //Data inicial
         Console.WriteLine("Digite a data inicial no formato dd/MM/yyyy: ");
         startDateEntered = Console.ReadLine();
 
-        isValid = DateTime.TryParseExact(startDateEntered, "dd/MM/yyyy",
+        isValidCondition = DateTime.TryParseExact(startDateEntered, "dd/MM/yyyy",
             CultureInfo.InvariantCulture, DateTimeStyles.None, out validStartDate) && validStartDate <= DateTime.Now;
 
-        if (!isValid)
+        if (!isValidCondition)
         {
             Console.WriteLine("Formato inválido! Tente novamente.");
             DelaySegundos(1);
@@ -171,47 +168,53 @@ void GetDesiredDate()
         Console.WriteLine("Digite a data final no formato dd/MM/yyyy: ");
         endDateEntered = Console.ReadLine();
 
-        isValid = DateTime.TryParseExact(endDateEntered, "dd/MM/yyyy",
+        isValidCondition = DateTime.TryParseExact(endDateEntered, "dd/MM/yyyy",
             CultureInfo.InvariantCulture, DateTimeStyles.None, out validEndDate) && validEndDate <= DateTime.Now;
 
         //Validações
-        if (!isValid)
+        if (!isValidCondition)
         {
             Console.WriteLine("Formato inválido! Informa as duas datas novamente.");
-            DelaySegundos(1);
+            DelaySegundos(2);
             Console.WriteLine("");
 
             continue;
         }
-        else if ((validEndDate - validStartDate).Days > 10)
+        else if ((validEndDate - validStartDate).Days >= 10)
         {
-            Console.WriteLine("Intervalo maior que 10 dias! Informa as duas datas novamente.");
-            DelaySegundos(1);
+            Console.WriteLine("Intervalo maior que 10 dias! Informe as duas datas novamente.");
+            DelaySegundos(2);
             Console.WriteLine("");
 
+            isValidCondition = false;
             continue;
         }
         else if (validEndDate < validStartDate)
         {
-            Console.WriteLine("Data Inicial não pode ser posterior a Data Final! Informa as duas datas novamente.");
-            DelaySegundos(1);
+            Console.WriteLine("Data Inicial não pode ser posterior a Data Final! Informe as duas datas novamente.");
+            DelaySegundos(2);
             Console.WriteLine("");
 
+            isValidCondition = false;
             continue;
         }
         else
         {
             Console.WriteLine("Datas válidas! Abrindo o navegador...\n");
-            DelaySegundos(1);
+            DelaySegundos(2);
         }
 
         Console.Clear();
-    } while (!isValid);
+    } while (!isValidCondition);
 
-    requestedDate = validStartDate.Date + DateTime.Now.TimeOfDay;
+    requestedStartDate = validStartDate.Date + DateTime.Now.TimeOfDay;
+    requestedEndDate = validEndDate.Date + DateTime.Now.TimeOfDay;
 
-    nomeOutputCsv = $"descadastro_{requestedDate:dd-MM-yyyy_HH-mm-ss}.csv";
-    nomeOutputLog = $"descadastro_{requestedDate:dd-MM-yyyy_HH-mm-ss}.txt";
+    BetweenDates betweenDates = new(requestedStartDate, requestedEndDate);
+    urlBaseBetweenDates = betweenDates.FormatUrl(urlBaseBetweenDates, appSettings.Label);
+
+    nomeOutputCsv = $"descadastro_{requestedStartDate:dd-MM-yyyy_HH-mm-ss}.csv";
+    nomeOutputLog = $"descadastro_{requestedStartDate:dd-MM-yyyy_HH-mm-ss}.txt";
 
     LogHelper.SalvarCsv(csvHeader, nomeOutputCsv);
 }
@@ -308,7 +311,7 @@ int ReturnLineNumberOfDesiredDate()
 
         foundDates.Add(currentEmailDate);
 
-        if (currentEmailDate.Date == requestedDate.Date)
+        if (currentEmailDate.Date == requestedStartDate.Date)
         {
             LogHelper.SalvarLog($"Retornou numero da linha que deve ser clicável: {i}", nomeOutputLog);
             return i;
@@ -316,7 +319,7 @@ int ReturnLineNumberOfDesiredDate()
         else if (!ContinueExecution())
         {
             //throw new EndOfExecutionException($"Foi feita a pesquisa entre as datas {foundDates.Max():dd/MM/yyyy} e {currentEmailDate:dd/MM/yyyy}. ");
-            throw new EndOfExecutionException($"Foi feito a pesquisa na data {requestedDate:dd/MM/yyyy}. ");
+            throw new EndOfExecutionException($"Foi feito a pesquisa na data {requestedStartDate:dd/MM/yyyy}. ");
         }
     }
 
@@ -444,7 +447,7 @@ void InitializeChromeDriverNew()
 
     var service = ChromeDriverService.CreateDefaultService();
     service.EnableVerboseLogging = true;
-    service.LogPath = Path.Combine(AppContext.BaseDirectory, "Output") + $"\\chromedriver_{requestedDate:dd-MM-yyyy_HH-mm-ss}.log";
+    service.LogPath = Path.Combine(AppContext.BaseDirectory, "Output") + $"\\chromedriver_{requestedStartDate:dd-MM-yyyy_HH-mm-ss}.log";
 
     driver = new ChromeDriver(service, options);
     LogHelper.SalvarLog("Inicializou o Chrome com perfil clonado", nomeOutputLog);
@@ -774,7 +777,7 @@ void PopulateCsv()
 
     if (!obtainedEmails.Contains(emailSender))
     {
-        csvContent = GenerateCsvRow(requestedDate, emailSender);
+        csvContent = GenerateCsvRow(requestedStartDate, emailSender);
         LogHelper.SalvarCsv(csvContent, nomeOutputCsv);
     }
 
@@ -912,7 +915,7 @@ void SaveEmailsToTheLogs()
 
 #region [EMAIL METHODS]
 
-void EnviarEmail(string subject, Exception ex = null, MemoryStream print = null)
+void EnviarEmail(string subject, Exception? ex = null, MemoryStream? print = null)
 {
     using MailMessage message = new();
 
@@ -981,7 +984,8 @@ void EnviarEmail(string subject, Exception ex = null, MemoryStream print = null)
             message.Attachments.Add(new Attachment(print, "screenshot.png", "image/png"));
         }
 
-        message.Body += $"Segue em anexo arquivo CSV com emails descadastrados referente ao dia {requestedDate:dd/MM/yyyy}. <br /><br />" +
+        message.Body += $"Segue em anexo arquivo CSV com emails descadastrados referente ao intervalo dos dias " +
+                        $"{requestedStartDate:dd/MM/yyyy} e {requestedEndDate:dd/MM/yyy}. <br /><br />" +
                         $"{obtainedEmails.Count} emails acessados. <br />" +
                         $"No arquivo CSV estão somente e-mails não repetidos. <br />" +
                         $"Caso queira ver todos os e-mails visualizados, acesse o final do arquivo de log. <br /><br />";
@@ -1020,7 +1024,7 @@ void EnviarEmail(string subject, Exception ex = null, MemoryStream print = null)
 
 void EnviarEmailErro(Exception ex, Screenshot? screenshot)
 {
-    string subject = $"ROBÔ DESCADASTRO - {requestedDate:dd/MM/yyyy}";
+    string subject = $"ROBÔ DESCADASTRO - {requestedStartDate:dd/MM/yyyy} a {requestedEndDate:dd/MM/yyyy}";
 
     if (screenshot?.AsByteArray != null)
     {
