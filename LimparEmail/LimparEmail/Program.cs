@@ -13,18 +13,20 @@ using System.Net.Mime;
 
 #region [ROBOT EXECUTION]
 
+int numberOfExecutions;
+int NumberOfEmailsAccessed = 0;
+int ExecucaoLenta = 1;
+
 string urlBase = string.Empty;
 string urlBaseBetweenDates = string.Empty;
-int numberOfExecutions;
+
 string nomeOutputCsv = string.Empty;
 string nomeOutputLog = string.Empty;
-
-string desiredLabel = string.Empty;
-int NumberOfEmailsAccessed = 0;
 AppSettings appSettings = new();
 
+string desiredLabel = string.Empty;
 const string urlLabel = "#label/";
-int ExecucaoLenta = 1;
+
 CurrentIterationPages currentIterationPages = new();
 List<string> obtainedEmails = [];
 List<DateTime> foundDates = [];
@@ -37,6 +39,7 @@ string csvContent = string.Empty;
 DateTime requestedStartDate = new();
 DateTime requestedEndDate = new();
 DateTime robotStarted = new();
+
 ChromeDriver? driver = null;
 IConfiguration config;
 
@@ -145,7 +148,7 @@ void GetDesiredDate()
 
         Console.WriteLine($"OBS 1: O gmail precisa estar logado no perfil do Chrome antes de rodar o robô");
         Console.Write($"OBS 2: MARCADOR QUE O ROBÔ IRÁ RODAR: {desiredLabel}\n");
-        Console.Write($"OBS 3: Informe um intervalo entre datas de 10 dias, no máximo\n");
+        Console.Write($"OBS 3: Informe um intervalo entre datas de 30 dias, no máximo\n");
         Console.Write($"OBS 4: Nome do CSV terá a data inicial, porém terá o e-mail de todos as datas solicitadas\n\n\n");
 
         //Data inicial
@@ -180,9 +183,9 @@ void GetDesiredDate()
 
             continue;
         }
-        else if ((validEndDate - validStartDate).Days >= 10)
+        else if ((validEndDate - validStartDate).Days >= 30)
         {
-            Console.WriteLine("Intervalo maior que 10 dias! Informe as duas datas novamente.");
+            Console.WriteLine("Intervalo maior que 30 dias! Informe as duas datas novamente.");
             DelaySegundos(2);
             Console.WriteLine("");
 
@@ -192,6 +195,15 @@ void GetDesiredDate()
         else if (validEndDate < validStartDate)
         {
             Console.WriteLine("Data Inicial não pode ser posterior a Data Final! Informe as duas datas novamente.");
+            DelaySegundos(2);
+            Console.WriteLine("");
+
+            isValidCondition = false;
+            continue;
+        }
+        else if (validEndDate.Date == validStartDate.Date)
+        {
+            Console.WriteLine("Data Inicial não pode ser igual a Data Final! Informe ao menos 1 dia de diferença.");
             DelaySegundos(2);
             Console.WriteLine("");
 
@@ -621,17 +633,25 @@ bool IsElementVisibleAndClickable(By by, int timeoutInSeconds = 5)
 {
     try
     {
-        WebDriverWait wait = new(driver, TimeSpan.FromSeconds(timeoutInSeconds));
+        var wait = new DefaultWait<IWebDriver>(driver)
+        {
+            Timeout = TimeSpan.FromSeconds(timeoutInSeconds),
+            PollingInterval = TimeSpan.FromMilliseconds(500) 
+        };
 
-        IWebElement element = wait.Until(drv => drv.FindElements(by).FirstOrDefault());
+        wait.IgnoreExceptionTypes(typeof(NoSuchElementException), typeof(StaleElementReferenceException));
 
-        return element != null && element.Displayed && element.Enabled;
+        IWebElement element = wait.Until(drv =>
+        {
+            var foundElement = drv.FindElements(by).FirstOrDefault();
+            if (foundElement != null && foundElement.Displayed && foundElement.Enabled)
+                return foundElement;
+            return null;
+        });
+
+        return element != null;
     }
     catch (WebDriverTimeoutException)
-    {
-        return false;
-    }
-    catch (NoSuchElementException)
     {
         return false;
     }
