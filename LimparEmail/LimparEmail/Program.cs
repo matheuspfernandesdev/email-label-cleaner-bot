@@ -10,6 +10,7 @@ using System.Globalization;
 using System.Net;
 using System.Net.Mail;
 using System.Net.Mime;
+using System.Text.RegularExpressions;
 
 #region [ROBOT EXECUTION]
 
@@ -38,6 +39,7 @@ string csvContent = string.Empty;
 
 DateTime requestedStartDate = new();
 DateTime requestedEndDate = new();
+DateTime? currentEmailDate = new();
 DateTime robotStarted = new();
 
 ChromeDriver? driver = null;
@@ -144,7 +146,7 @@ void GetDesiredDate()
 
     do
     {
-        Console.Clear();    
+        Console.Clear();
 
         Console.WriteLine($"OBS 1: O gmail precisa estar logado no perfil do Chrome antes de rodar o robô");
         Console.Write($"OBS 2: MARCADOR QUE O ROBÔ IRÁ RODAR: {desiredLabel}\n");
@@ -220,7 +222,7 @@ void GetDesiredDate()
     } while (!isValidCondition);
 
     requestedStartDate = validStartDate.Date + DateTime.Now.TimeOfDay;
-    requestedEndDate = validEndDate.Date + DateTime.Now.TimeOfDay;
+    requestedEndDate = validEndDate.AddDays(1).Date + DateTime.Now.TimeOfDay; //Filtro do Gmail é bugado. Precisa do AddDays +1
 
     BetweenDates betweenDates = new(requestedStartDate, requestedEndDate);
     urlBaseBetweenDates = betweenDates.FormatUrl(urlBaseBetweenDates, appSettings.Label);
@@ -577,37 +579,57 @@ void GoToPage(string desiredPage)
 DateTime? ParseEmailStringToDate(string dateString)
 {
     var monthMapping = new Dictionary<string, int>
-        {
-            { "jan", 1 }, { "fev", 2 }, { "mar", 3 }, { "abr", 4 }, { "mai", 5 }, { "jun", 6 },
-            { "jul", 7 }, { "ago", 8 }, { "set", 9 }, { "out", 10 }, { "nov", 11 }, { "dez", 12 }
-        };
+    {
+        { "jan", 1 }, { "fev", 2 }, { "mar", 3 }, { "abr", 4 }, { "mai", 5 }, { "jun", 6 },
+        { "jul", 7 }, { "ago", 8 }, { "set", 9 }, { "out", 10 }, { "nov", 11 }, { "dez", 12 }
+    };
 
     var currentDate = DateTime.Today;
     var culture = new CultureInfo("pt-BR");
 
+    // Caso 1: string é um horário (ex: "14:30")
     if (TimeSpan.TryParse(dateString, out var time))
     {
-        if (time < robotStarted.TimeOfDay)
-            return currentDate.Add(time);
-        else
-            return currentDate.AddDays(-1).Add(time);
+        return time < robotStarted.TimeOfDay
+            ? currentDate.Add(time)
+            : currentDate.AddDays(-1).Add(time);
     }
-    else if (dateString.Contains(" de "))
+
+    // Caso 2: formato "30 de mai." ou "30 de mai. de 2024"
+    if (dateString.Contains(" de "))
     {
         var parts = dateString.Split(" de ");
 
-        if (parts.Length == 2 &&
-            int.TryParse(parts[0], out int day) &&
-            monthMapping.TryGetValue(parts[1].TrimEnd('.').ToLower(), out int month))
+        if (parts.Length != 2 && parts.Length != 3)
+            return null;
+
+        if (!int.TryParse(parts[0], out int day))
+            return null;
+
+        string monthKey = parts[1].TrimEnd('.').ToLower();
+        if (!monthMapping.TryGetValue(monthKey, out int month))
+            return null;
+
+        if (parts.Length == 2)
         {
             return new DateTime(currentDate.Year, month, day);
         }
+
+        if (int.TryParse(parts[2], out int year))
+        {
+            return new DateTime(year, month, day);
+        }
+
+        return null;
     }
-    else if (DateTime.TryParseExact(dateString, "dd/MM/yyyy", culture, DateTimeStyles.None, out var parsedDate))
+
+    // Caso 3: formato "dd/MM/yyyy"
+    if (DateTime.TryParseExact(dateString, "dd/MM/yyyy", culture, DateTimeStyles.None, out var parsedDate))
     {
         return parsedDate;
     }
 
+    // Nenhum formato reconhecido
     return null;
 }
 
@@ -636,7 +658,7 @@ bool IsElementVisibleAndClickable(By by, int timeoutInSeconds = 5)
         var wait = new DefaultWait<IWebDriver>(driver)
         {
             Timeout = TimeSpan.FromSeconds(timeoutInSeconds),
-            PollingInterval = TimeSpan.FromMilliseconds(500) 
+            PollingInterval = TimeSpan.FromMilliseconds(500)
         };
 
         wait.IgnoreExceptionTypes(typeof(NoSuchElementException), typeof(StaleElementReferenceException));
@@ -794,10 +816,11 @@ void ClickInEmail()
 void PopulateCsv()
 {
     string emailSender = GetEmailSender();
+    currentEmailDate = GetCurrentEmailDate();
 
     if (!obtainedEmails.Contains(emailSender))
     {
-        csvContent = GenerateCsvRow(requestedStartDate, emailSender);
+        csvContent = GenerateCsvRow(currentEmailDate.Value, emailSender);
         LogHelper.SalvarCsv(csvContent, nomeOutputCsv);
     }
 
@@ -871,6 +894,25 @@ string GetEmailSender()
 
     throw new NoSuchElementException("Não foi encontrado email remetente. " +
                                      "Favor conferir seletores do robô.");
+}
+
+DateTime? GetCurrentEmailDate()
+{
+    string xpath = "//*[@class='gK']/span[2]";
+    string resultado = string.Empty;
+
+    IsElementVisibleAndClickable(By.XPath(xpath));
+    string date = driver.FindElement(By.XPath(xpath)).Text;
+
+    var match = Regex.Match(date, @"\b\d{1,2} de [a-zç]{3,4}\.?(?: de \d{4})?", RegexOptions.IgnoreCase);
+
+    if (match.Success)
+    {
+        resultado = match.Value.Trim();
+        Console.WriteLine(resultado);
+    }
+
+    return ParseEmailStringToDate(resultado);
 }
 
 /// <summary>
