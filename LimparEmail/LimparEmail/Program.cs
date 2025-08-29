@@ -150,7 +150,7 @@ void GetDesiredDate()
 
         Console.WriteLine($"OBS 1: O gmail precisa estar logado no perfil do Chrome antes de rodar o robô");
         Console.Write($"OBS 2: MARCADOR QUE O ROBÔ IRÁ RODAR: {desiredLabel}\n");
-        Console.Write($"OBS 3: Informe um intervalo entre datas de 30 dias, no máximo\n");
+        Console.Write($"OBS 3: Informe um intervalo entre datas de 30 dias no máximo, e maior que a data atual\n");
         Console.Write($"OBS 4: Nome do CSV terá a data inicial, porém terá o e-mail de todos as datas solicitadas\n\n\n");
 
         //Data inicial
@@ -162,7 +162,7 @@ void GetDesiredDate()
 
         if (!isValidCondition)
         {
-            Console.WriteLine("Formato inválido! Tente novamente.");
+            Console.WriteLine("Data inválida! Tente novamente.");
             DelaySegundos(1);
             Console.WriteLine("");
 
@@ -179,7 +179,7 @@ void GetDesiredDate()
         //Validações
         if (!isValidCondition)
         {
-            Console.WriteLine("Formato inválido! Informa as duas datas novamente.");
+            Console.WriteLine("Data inválida! Informa as duas datas novamente.");
             DelaySegundos(2);
             Console.WriteLine("");
 
@@ -374,7 +374,8 @@ int ReturnQuantityEmailsListed()
 void ProcessEmail()
 {
     PopulateCsv();
-    RemoveLabels();
+    RemoveAllLabels();
+    AddLabel("Trabalho");
 }
 
 void GoToNextEmail()
@@ -829,7 +830,7 @@ void PopulateCsv()
     LogHelper.SalvarLog($"Populou o csv com o email do remetente.", nomeOutputLog);
 }
 
-void RemoveLabels()
+void RemoveAllLabels()
 {
     int numberOfLabels;
 
@@ -870,6 +871,38 @@ void RemoveLabels()
     }
 
     LogHelper.SalvarLog("Removeu todos os marcadores.", nomeOutputLog);
+}
+
+void AddLabel(string label)
+{
+    try
+    {
+        //Clique nos 3 pontinhos "Mais"
+        ClickAfterAwait(By.XPath("//*[@class='T-I J-J5-Ji nf T-I-ax7 L3']"));
+
+        //Clique no "Marcar Como"
+        ClickAfterAwait(By.XPath("//*[@class='J-N J-Ph']"));
+
+        //Clicando no Marcador
+        ClickAfterAwait(By.XPath($"//*[text()='{label}']"));
+    }
+    catch (Exception)
+    {
+        try
+        {
+            //Clique no botão "Marcadores"
+            ClickAfterAwait(By.XPath("//*[@class='T-I J-J5-Ji mw T-I-ax7 L3']"));
+
+            //Clicando no Marcador
+            ClickAfterAwait(By.XPath($"//*[text()='{label}']"));
+        }
+        catch(Exception)
+        {
+            throw new Exception($"Não foi possível adicionar o marcador {label}");
+        }
+    }
+
+    LogHelper.SalvarLog($"Adicionou o marcador {label}", nomeOutputLog);
 }
 
 string GetEmailSender()
