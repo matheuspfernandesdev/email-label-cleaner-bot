@@ -877,29 +877,15 @@ void AddLabel(string label)
 {
     try
     {
-        //Clique nos 3 pontinhos "Mais"
-        ClickAfterAwait(By.XPath("//*[@class='T-I J-J5-Ji nf T-I-ax7 L3']"));
-
-        //Clique no "Marcar Como"
-        ClickAfterAwait(By.XPath("//*[@class='J-N J-Ph']"));
+        //Clique no botão "Marcadores"
+        ClickAfterAwait(By.XPath("//*[@class='T-I J-J5-Ji mw T-I-ax7 L3']"));
 
         //Clicando no Marcador
-        ClickAfterAwait(By.XPath($"//*[text()='{label}']"));
+        ClickAfterAwait(By.XPath($"//[@class='J-LC']//[text() = '{label}']"));
     }
     catch (Exception)
     {
-        try
-        {
-            //Clique no botão "Marcadores"
-            ClickAfterAwait(By.XPath("//*[@class='T-I J-J5-Ji mw T-I-ax7 L3']"));
-
-            //Clicando no Marcador
-            ClickAfterAwait(By.XPath($"//*[text()='{label}']"));
-        }
-        catch(Exception)
-        {
-            throw new Exception($"Não foi possível adicionar o marcador {label}");
-        }
+        throw new Exception($"Não foi possível adicionar o marcador {label}");
     }
 
     LogHelper.SalvarLog($"Adicionou o marcador {label}", nomeOutputLog);
