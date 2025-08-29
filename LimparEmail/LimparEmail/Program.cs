@@ -375,7 +375,7 @@ void ProcessEmail()
 {
     PopulateCsv();
     RemoveAllLabels();
-    AddLabel("Trabalho");
+    AddLabel("Lidas");
 }
 
 void GoToNextEmail()
